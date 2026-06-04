@@ -66,6 +66,8 @@ npm run test:all         # everything
 
 ## Deploy (Cloudflare Pages)
 
+### One-off / manual deploy
+
 ```bash
 npx wrangler login
 npm run deploy                                   # wrangler pages deploy public
@@ -73,6 +75,28 @@ npx wrangler pages secret put OPENROUTER_API_KEY # set the server secret
 # optional:
 npx wrangler pages secret put OPENROUTER_MODEL
 ```
+
+### Continuous deployment (GitHub Actions)
+
+Pushes to `main` (and manual runs via "Run workflow") automatically deploy via
+`.github/workflows/deploy.yml`. The workflow runs typecheck + tests + integration
+tests (if the key is available) before deploying.
+
+Required GitHub repository secret:
+
+- `CLOUDFLARE_API_TOKEN` — a Cloudflare API token with **Account > Cloudflare Pages > Edit** permission.
+
+Create the token:
+1. Cloudflare dashboard → profile icon → **My Profile** → **API Tokens** → **Create Token**.
+2. Choose **Custom token**.
+3. Permissions: **Account** | **Cloudflare Pages** | **Edit**.
+4. (Optional but recommended) Restrict to the specific account that owns the Pages project.
+5. Create and copy the token.
+6. In your GitHub repo: **Settings** → **Secrets and variables** → **Actions** → **New repository secret** → name it `CLOUDFLARE_API_TOKEN`.
+
+You can also keep `OPENROUTER_API_KEY` as a GitHub secret (already used by the
+integration test job in CI). On successful deploys the live site will use the
+Pages secret you set with `wrangler pages secret put` (or the dashboard).
 
 Cloudflare Pages scales to zero — you only pay (nothing, on the free tier) when
 someone is actually reading.
