@@ -1,7 +1,7 @@
 // UI translations for supported languages.
 // Add new languages here; keys must match what detectLang() returns.
 
-const I18N = {
+export const I18N = {
   en: {
     title: "Philip — read the Bible together",
     tagline: "“Do you understand what you are reading?” — Acts 8:30",
