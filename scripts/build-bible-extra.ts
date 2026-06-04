@@ -15,19 +15,29 @@ import type { CompactBook } from "./build-bible.ts";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_BIBLE = join(__dirname, "..", "public", "bible");
 
-// Scrollmapper bible_databases JSON exports.
-// Format: { "resultset": { "row": [{ "field": [bookNum, chapter, verse, text] }] } }
+// scrollmapper/bible_databases JSON format:
+// { "translation": "...", "books": [{ "name": "...", "chapters": [{ "chapter": N, "verses": [{ "verse": N, "text": "..." }] }] }] }
 const SCROLLMAPPER_BASE =
-  "https://raw.githubusercontent.com/scrollmapper/bible_databases/master/json";
+  "https://raw.githubusercontent.com/scrollmapper/bible_databases/master/formats/json";
 
-interface ScrollmapperRow {
-  field: [number | string, number | string, number | string, string];
+interface SourceVerse {
+  verse: number;
+  text: string;
 }
 
-interface ScrollmapperFile {
-  resultset: {
-    row: ScrollmapperRow[];
-  };
+interface SourceChapter {
+  chapter: number;
+  verses: SourceVerse[];
+}
+
+interface SourceBook {
+  name: string;
+  chapters: SourceChapter[];
+}
+
+interface SourceBible {
+  translation: string;
+  books: SourceBook[];
 }
 
 /** Collapse runs of whitespace. */
@@ -35,52 +45,41 @@ function tidy(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
 
-async function fetchScrollmapper(filename: string): Promise<ScrollmapperFile> {
+async function fetchBible(filename: string): Promise<SourceBible> {
   const url = `${SCROLLMAPPER_BASE}/${filename}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to fetch ${url}: HTTP ${res.status}`);
-  return (await res.json()) as ScrollmapperFile;
+  return (await res.json()) as SourceBible;
 }
 
 /**
- * Convert a scrollmapper flat-row file into 66 CompactBook objects keyed by
- * BOOKS index. Book numbers in the source are 1-based (1 = Genesis).
+ * Convert a scrollmapper nested-JSON bible into our CompactBook format.
+ * Books are matched by position (index 0 = Genesis, index 65 = Revelation)
+ * since both the source and our BOOKS array follow the Protestant 66-book canon.
  */
-function splitByBook(
-  data: ScrollmapperFile,
+function convertBible(
+  source: SourceBible,
   translationName: string,
-): Map<number, CompactBook> {
-  const byBook = new Map<number, CompactBook>();
+): CompactBook[] {
+  const result: CompactBook[] = [];
 
-  for (const row of data.resultset.row) {
-    const [rawBook, rawChapter, rawVerse, rawText] = row.field;
-    const bookNum = Number(rawBook);
-    if (bookNum < 1 || bookNum > 66) continue; // skip deuterocanonical or header rows
-    const bookMeta = BOOKS[bookNum - 1];
-    if (!bookMeta) continue;
+  for (let i = 0; i < Math.min(source.books.length, BOOKS.length); i++) {
+    const srcBook = source.books[i];
+    const bookMeta = BOOKS[i];
+    const chapters: Record<string, Record<string, string>> = {};
 
-    const c = String(Number(rawChapter));
-    const v = String(Number(rawVerse));
-    const text = tidy(rawText);
-
-    if (!byBook.has(bookNum)) {
-      byBook.set(bookNum, { book: bookMeta.name, translation: translationName, chapters: {} });
-    }
-    const compact = byBook.get(bookNum)!;
-    const chapter = (compact.chapters[c] ??= {});
-    chapter[v] = chapter[v] ? `${chapter[v]} ${text}` : text;
-  }
-
-  // Final tidy pass.
-  for (const compact of [...byBook.values()]) {
-    for (const c of Object.keys(compact.chapters)) {
-      for (const v of Object.keys(compact.chapters[c])) {
-        compact.chapters[c][v] = tidy(compact.chapters[c][v]);
+    for (const srcChapter of srcBook.chapters) {
+      const c = String(srcChapter.chapter);
+      chapters[c] = {};
+      for (const srcVerse of srcChapter.verses) {
+        chapters[c][String(srcVerse.verse)] = tidy(srcVerse.text);
       }
     }
+
+    result.push({ book: bookMeta.name, translation: translationName, chapters });
   }
 
-  return byBook;
+  return result;
 }
 
 async function buildTranslation(params: {
@@ -93,37 +92,33 @@ async function buildTranslation(params: {
   await mkdir(outDir, { recursive: true });
 
   console.log(`\nDownloading ${translationName} (${filename})…`);
-  const data = await fetchScrollmapper(filename);
-  const byBook = splitByBook(data, translationName);
+  const source = await fetchBible(filename);
+  const books = convertBible(source, translationName);
 
   let totalVerses = 0;
-  for (let i = 0; i < BOOKS.length; i++) {
-    const book = BOOKS[i];
-    const compact = byBook.get(i + 1);
-    if (!compact) {
-      console.warn(`  WARNING: No data found for book ${i + 1} (${book.name})`);
-      continue;
-    }
+  for (let i = 0; i < books.length; i++) {
+    const compact = books[i];
+    const bookMeta = BOOKS[i];
     const verseCount = Object.values(compact.chapters).reduce(
       (n, ch) => n + Object.keys(ch).length,
       0,
     );
     totalVerses += verseCount;
-    await writeFile(join(outDir, `${book.file}.json`), JSON.stringify(compact), "utf8");
-    console.log(`  ${book.name.padEnd(18)} ${verseCount} verses -> ${book.file}.json`);
+    await writeFile(join(outDir, `${bookMeta.file}.json`), JSON.stringify(compact), "utf8");
+    console.log(`  ${compact.book.padEnd(18)} ${verseCount} verses -> ${bookMeta.file}.json`);
   }
-  console.log(`Done. ${BOOKS.length} books, ${totalVerses} verses -> ${outDir}`);
+  console.log(`Done. ${books.length} books, ${totalVerses} verses -> ${outDir}`);
 }
 
 async function main() {
   await buildTranslation({
-    filename: "t_rvr09.json",
+    filename: "SpaRV.json",
     translationName: "RV1909",
     translationId: "rv1909",
   });
 
   await buildTranslation({
-    filename: "t_luth1545.json",
+    filename: "GerBoLut.json",
     translationName: "Luther 1545",
     translationId: "luther1545",
   });
