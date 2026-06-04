@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
 
 jobs:
@@ -20,8 +20,8 @@ jobs:
 
   integration:
     runs-on: ubuntu-latest
-    # Runs only when an OPENROUTER_API_KEY secret is configured for the repo.
-    if: ${{ github.event_name == 'push' }}
+    # Runs on every push/PR. The step itself skips gracefully when the
+    # OPENROUTER_API_KEY secret is unavailable (e.g. PRs from forks).
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
