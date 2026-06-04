@@ -1,0 +1,27 @@
+{
+  "name": "philip",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Philip — a guided Bible reading companion (website MVP)",
+  "type": "module",
+  "scripts": {
+    "build:bible": "tsx scripts/build-bible.ts",
+    "vendor:marked": "tsx scripts/vendor-marked.ts",
+    "dev": "wrangler pages dev public",
+    "deploy": "wrangler pages deploy public",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --project backend --project frontend",
+    "test:integration": "vitest run --project integration",
+    "test:all": "vitest run",
+    "test:watch": "vitest --project backend --project frontend"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240909.0",
+    "@types/node": "^22.19.19",
+    "jsdom": "^25.0.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8",
+    "wrangler": "^3.86.0"
+  }
+}
