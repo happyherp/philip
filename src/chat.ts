@@ -4,6 +4,8 @@
 
 import { type AssetFetch } from "./bible.ts";
 import { type ChatMessage, runChat } from "./openrouter.ts";
+import { buildSystemPrompt } from "./philip.ts";
+import { translationForLang } from "./translations.ts";
 
 export interface StreamChatOptions {
   /** Raw conversation from the client (only role/content trusted). */
@@ -18,6 +20,8 @@ export interface StreamChatOptions {
   onAssistantFinal?: (text: string) => void | Promise<void>;
   /** If set, emitted as X-Conversation-Id response header so clients can learn a newly created id immediately. */
   conversationId?: string;
+  /** ISO 639-1 language code for the reader (e.g. "en", "es", "de"). Selects system prompt and Bible translation. */
+  lang?: string;
 }
 
 /** Keep only well-formed user/assistant turns from untrusted client input. */
@@ -52,6 +56,9 @@ export function streamChatResponse(opts: StreamChatOptions): StreamChatResult {
   const send = (obj: unknown) =>
     writer.write(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
 
+  const lang = opts.lang ?? "en";
+  const translation = translationForLang(lang);
+
   const pump = (async () => {
     try {
       if (history.length === 0) {
@@ -65,6 +72,8 @@ export function streamChatResponse(opts: StreamChatOptions): StreamChatResult {
         fetchImpl: opts.fetchImpl,
         referer: opts.referer,
         title: opts.title,
+        systemPrompt: buildSystemPrompt(lang),
+        translationId: translation.id,
         onToken: (t) => send({ token: t }),
       });
       if (opts.onAssistantFinal) {
