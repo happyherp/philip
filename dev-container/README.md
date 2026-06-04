@@ -24,22 +24,27 @@ the container but commit from the host** — the container has **no git credenti
   alone would not grant it.
 - **Dependencies:** `node_modules` and `.dev.vars` come from the repo via the bind mount
   (already installed); the entrypoint runs `npm ci` only as a fallback.
-- **File ownership:** the container runs as your host UID/GID (`1002`), so files Grok
-  creates in the workspace stay owned by you and are committable from the host.
-- **No push access:** no git credentials are mounted. Commit from the host.
+- **File ownership:** the container runs as your host UID/GID (from `.env`, default
+  `1000`), so files Grok creates in the workspace stay owned by you.
+- **Git identity:** your `user.name`/`user.email` (from `.env`) are applied via
+  `git config --global` at startup, so the agent's *local* commits are attributed to you.
+- **No push access:** no git *credentials* are mounted — commit/push from the host.
 
 ## Quick start
 
-Run all commands from this directory (`dev-container/`).
+One command does everything — generate your per-machine `.env`, build the image, and drop
+into a Grok session (re-runnable; any args pass through to `grok`):
+
+```bash
+./dev-container/start.sh       # from the repo root
+```
+
+Or run the steps yourself from this directory (`dev-container/`):
 
 ```bash
 docker compose build           # one-time (downloads grok + apt deps)
-
-# Start a Grok session in the project:
-docker compose run --rm dev grok
-
-# Or drop into a shell:
-docker compose run --rm dev bash
+docker compose run --rm dev grok   # start a Grok session
+docker compose run --rm dev bash   # or drop into a shell
 ```
 
 ## Common commands
@@ -61,24 +66,24 @@ docker compose run --rm --service-ports dev \
 > `wrangler pages dev` binds to localhost *inside* the container; `--ip 0.0.0.0` is what
 > makes it reachable through the forwarded port.
 
-## Host user IDs (portability)
+## Per-machine settings: `.env` (portability)
 
-The container builds a `dev` user matching your **host UID/GID** so files it creates in
-the bind-mounted workspace stay owned by you. This is a **Linux-native** concern —
-macOS/Windows Docker Desktop remap ownership automatically, so you can ignore it there.
+`dev-container/.env` (gitignored, machine-specific) holds your **host UID/GID** and your
+**git identity**:
 
-The IDs come from `dev-container/.env` (gitignored, machine-specific) and default to
-`1000:1000` if it's absent. On a new machine, generate yours once (from this directory):
+- **UID/GID** build a matching `dev` user so files created in the bind-mounted workspace
+  stay owned by you. This is a **Linux-native** concern — macOS/Windows Docker Desktop
+  remap ownership automatically. Defaults to `1000:1000` if `.env` is absent.
+- **GIT_USER_NAME / GIT_USER_EMAIL** are applied via `git config --global` at startup so
+  the agent's local commits are attributed to you (identity only — no push credentials).
+
+On a new machine, generate yours once (from this directory):
 
 ```bash
-printf 'UID=%s\nGID=%s\n' "$(id -u)" "$(id -g)" > .env
+{ printf 'UID=%s\nGID=%s\n' "$(id -u)" "$(id -g)"
+  printf 'GIT_USER_NAME=%s\n' "$(git config --get user.name)"
+  printf 'GIT_USER_EMAIL=%s\n' "$(git config --get user.email)"; } > .env
 docker compose build
-```
-
-Or pass them inline for a single build:
-
-```bash
-UID=$(id -u) GID=$(id -g) docker compose build
 ```
 
 ## Customizing
@@ -87,12 +92,9 @@ Override build args in [`docker-compose.yml`](docker-compose.yml) under `build.a
 
 - `GROK_VERSION` — pin a different Grok release (default `0.2.22`).
 
-Optional mounts (commented in the compose file):
+Optional mount (commented in the compose file):
 
 - `~/.grok/skills` — bring your Grok skills/plugins for full parity with the host.
-- If Grok ever errors on a missing git identity for *local* commits, add
-  `GIT_AUTHOR_NAME/EMAIL` + `GIT_COMMITTER_NAME/EMAIL` under `environment` (an identity is
-  not a credential — no push access is added).
 
 ## Notes
 

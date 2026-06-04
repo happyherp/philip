@@ -28,6 +28,10 @@ services:
       # - ${HOME}/.grok/skills:/home/dev/.grok/skills:ro
     environment:
       - HOME=/home/dev
+      # The agent's git identity for local commits (set from .env; no push credentials).
+      # The entrypoint applies these via `git config --global`.
+      - GIT_USER_NAME=${GIT_USER_NAME:-}
+      - GIT_USER_EMAIL=${GIT_USER_EMAIL:-}
     ports:
       - "8788:8788"   # wrangler pages dev
     stdin_open: true
