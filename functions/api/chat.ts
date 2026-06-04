@@ -50,6 +50,12 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   const userMessage =
     typeof body.message === "string" ? body.message.trim() : "";
 
+  // Language: prefer explicit body param, fall back to Accept-Language header, default "en".
+  const lang = resolveLang(
+    typeof body.lang === "string" ? body.lang : null,
+    request.headers.get("Accept-Language"),
+  );
+
   if (!userMessage) {
     return json({ error: "message is required" }, 400);
   }
@@ -79,7 +85,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   const historyForLLM = [...priorMessages, { role: "user" as const, content: userMessage }];
 
   console.log(
-    `[philip] chat request – model=${model} conv=${convId} turns=${historyForLLM.length}`,
+    `[philip] chat request – model=${model} conv=${convId} turns=${historyForLLM.length} lang=${lang}`,
   );
 
   const { response, pump } = streamChatResponse({
@@ -90,6 +96,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     referer: new URL(request.url).origin,
     title: "Philip",
     conversationId: convId,
+    lang,
     onAssistantFinal: (text: string) => {
       const t = text?.trim();
       if (!t) return Promise.resolve();
@@ -114,4 +121,20 @@ function json(obj: unknown, status: number): Response {
     status,
     headers: { "content-type": "application/json" },
   });
+}
+
+const SUPPORTED_LANGS = new Set(["en", "es", "de"]);
+
+function resolveLang(bodyLang: string | null, acceptLanguage: string | null): string {
+  if (bodyLang) {
+    const base = bodyLang.split("-")[0].toLowerCase();
+    if (SUPPORTED_LANGS.has(base)) return base;
+  }
+  if (acceptLanguage) {
+    for (const part of acceptLanguage.split(",")) {
+      const base = part.split(";")[0].trim().split("-")[0].toLowerCase();
+      if (SUPPORTED_LANGS.has(base)) return base;
+    }
+  }
+  return "en";
 }

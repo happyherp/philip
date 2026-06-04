@@ -35,6 +35,10 @@ export interface RunChatDeps {
   /** Optional OpenRouter attribution headers. */
   referer?: string;
   title?: string;
+  /** Override the system prompt (for language-specific variants). */
+  systemPrompt?: string;
+  /** Which bundled translation to use (e.g. "web", "rv1909", "luther1545"). */
+  translationId?: string;
 }
 
 /**
@@ -47,7 +51,7 @@ export async function runChat(history: ChatMessage[], deps: RunChatDeps): Promis
   const maxIterations = deps.maxIterations ?? 6;
 
   const messages: ChatMessage[] = [
-    { role: "system", content: SYSTEM_PROMPT },
+    { role: "system", content: deps.systemPrompt ?? SYSTEM_PROMPT },
     ...history,
   ];
 
@@ -94,7 +98,7 @@ export async function runChat(history: ChatMessage[], deps: RunChatDeps): Promis
       // and loop so it can compose the answer around verified text.
       messages.push({ role: "assistant", content: turn.content || null, tool_calls: turn.toolCalls });
       for (const call of turn.toolCalls) {
-        const result = await executeToolCall(call, deps.assetFetch);
+        const result = await executeToolCall(call, deps.assetFetch, deps.translationId ?? "web");
         messages.push({
           role: "tool",
           tool_call_id: call.id,
@@ -112,7 +116,7 @@ export async function runChat(history: ChatMessage[], deps: RunChatDeps): Promis
   throw new Error(`Exceeded ${maxIterations} tool-call iterations without a final answer.`);
 }
 
-async function executeToolCall(call: ToolCall, assetFetch: AssetFetch): Promise<string> {
+async function executeToolCall(call: ToolCall, assetFetch: AssetFetch, translationId = "web"): Promise<string> {
   if (call.function.name !== "get_passage") {
     return JSON.stringify({ error: `Unknown tool: ${call.function.name}` });
   }
@@ -122,7 +126,7 @@ async function executeToolCall(call: ToolCall, assetFetch: AssetFetch): Promise<
   } catch {
     return JSON.stringify({ error: "Invalid tool arguments JSON." });
   }
-  const result = await getPassage(reference, assetFetch);
+  const result = await getPassage(reference, assetFetch, translationId);
   return "error" in result ? JSON.stringify(result) : passageToText(result);
 }
 

@@ -9,6 +9,7 @@
  * @param {string} [opts.conversationId]
  * @param {string} [opts.message] - new style: just the latest user message
  * @param {Array<{role:string,content:string}>} [opts.messages] - legacy full history
+ * @param {string} [opts.lang] - ISO 639-1 language code ("en", "es", "de")
  * @param {(token: string) => void} opts.onToken
  * @param {(id: string) => void} [opts.onConversationId] - called if server returns X-Conversation-Id (new convos)
  * @param {() => void} [opts.onDone]
@@ -20,6 +21,7 @@ export async function streamChat({
   conversationId,
   message,
   messages,
+  lang,
   onToken,
   onConversationId,
   onDone,
@@ -28,8 +30,8 @@ export async function streamChat({
   url = "/api/chat",
 }) {
   const body = message
-    ? { conversationId, message }
-    : { messages };
+    ? { conversationId, message, lang }
+    : { messages, lang };
 
   let res;
   try {
