@@ -14,6 +14,9 @@ export const I18N = {
     send: "Send",
     new_chat: "new",
     error_prefix: "Something went wrong: ",
+    mic_start: "Record voice",
+    mic_stop: "Stop recording",
+    mic_no_support: "Voice input not supported in this browser",
   },
   es: {
     title: "Felipe — leer la Biblia juntos",
@@ -27,6 +30,9 @@ export const I18N = {
     send: "Enviar",
     new_chat: "nuevo",
     error_prefix: "Algo salió mal: ",
+    mic_start: "Grabar voz",
+    mic_stop: "Detener grabación",
+    mic_no_support: "Tu navegador no admite entrada de voz",
   },
   de: {
     title: "Philipp — die Bibel gemeinsam lesen",
@@ -40,6 +46,9 @@ export const I18N = {
     send: "Senden",
     new_chat: "neu",
     error_prefix: "Etwas ist schiefgelaufen: ",
+    mic_start: "Spracheingabe starten",
+    mic_stop: "Aufnahme stoppen",
+    mic_no_support: "Spracheingabe wird in diesem Browser nicht unterstützt",
   },
 };
 

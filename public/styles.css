@@ -139,6 +139,29 @@ body {
   color: var(--ink);
   max-height: 160px;
 }
+#mic {
+  flex-shrink: 0;
+  width: 42px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+#mic:hover { color: var(--accent); border-color: var(--accent-soft); }
+#mic.recording {
+  color: #c0392b;
+  border-color: #e8b4b0;
+  background: #fdf0ee;
+  animation: mic-pulse 1s ease-in-out infinite;
+}
+#mic:disabled { opacity: 0.4; cursor: default; }
+@keyframes mic-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+
 #send {
   font: inherit;
   padding: 0 18px;
