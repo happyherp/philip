@@ -36,6 +36,21 @@ body {
   font-size: 1.5rem;
   letter-spacing: 0.02em;
   color: var(--accent);
+  display: inline;
+}
+.topbar #new-chat {
+  margin-left: 0.6em;
+  font-size: 0.65rem;
+  vertical-align: middle;
+  color: var(--muted);
+  text-decoration: none;
+  border: 1px solid var(--border);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+.topbar #new-chat:hover {
+  color: var(--accent);
+  border-color: var(--accent-soft);
 }
 .tagline {
   margin: 2px 0 0;

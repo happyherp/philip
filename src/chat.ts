@@ -14,6 +14,10 @@ export interface StreamChatOptions {
   fetchImpl?: typeof fetch;
   referer?: string;
   title?: string;
+  /** Called with the complete final assistant text (after tool loops) so caller can persist it. */
+  onAssistantFinal?: (text: string) => void | Promise<void>;
+  /** If set, emitted as X-Conversation-Id response header so clients can learn a newly created id immediately. */
+  conversationId?: string;
 }
 
 /** Keep only well-formed user/assistant turns from untrusted client input. */
@@ -54,7 +58,7 @@ export function streamChatResponse(opts: StreamChatOptions): StreamChatResult {
         await send({ error: "No message provided." });
         return;
       }
-      await runChat(history, {
+      const finalText = await runChat(history, {
         apiKey: opts.apiKey,
         model: opts.model,
         assetFetch: opts.assetFetch,
@@ -63,6 +67,9 @@ export function streamChatResponse(opts: StreamChatOptions): StreamChatResult {
         title: opts.title,
         onToken: (t) => send({ token: t }),
       });
+      if (opts.onAssistantFinal) {
+        await opts.onAssistantFinal(finalText);
+      }
       await send({ done: true });
     } catch (err) {
       await send({ error: err instanceof Error ? err.message : String(err) });
@@ -71,12 +78,16 @@ export function streamChatResponse(opts: StreamChatOptions): StreamChatResult {
     }
   })();
 
+  const responseHeaders: Record<string, string> = {
+    "content-type": "text/event-stream; charset=utf-8",
+    "cache-control": "no-cache",
+    connection: "keep-alive",
+  };
+  if (opts.conversationId) {
+    responseHeaders["x-conversation-id"] = opts.conversationId;
+  }
   const response = new Response(readable, {
-    headers: {
-      "content-type": "text/event-stream; charset=utf-8",
-      "cache-control": "no-cache",
-      connection: "keep-alive",
-    },
+    headers: responseHeaders,
   });
 
   return { response, pump };

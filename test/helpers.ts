@@ -2,6 +2,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AssetFetch } from "../src/bible.ts";
+import type { D1Database } from "@cloudflare/workers-types";
 
 /** An AssetFetch backed by the real generated files under public/. */
 export function fileAssetFetch(): AssetFetch {
@@ -66,5 +67,55 @@ export function fetchSequence(responses: Response[]): {
   return {
     fetchImpl,
     bodies: async () => calls.map((c) => JSON.parse(String(c.body))),
+  };
+}
+
+/**
+ * Create an in-memory D1 (via Miniflare) pre-loaded with the real project migration.
+ * Use for unit tests of src/db.ts so we run against the shipped schema + real D1 behavior
+ * (constraints, AUTOINCREMENT ordering, result shapes, errors, etc.).
+ *
+ * Returns the bound DB plus a dispose() to shut down the workerd instance.
+ */
+export async function createTestD1(): Promise<{
+  db: D1Database;
+  dispose: () => Promise<void>;
+}> {
+  // Dynamic import so that `miniflare` (a dev/test-only heavy dependency)
+  // is not a static top-level dependency of helpers.ts.
+  // This avoids potential version conflicts with wrangler's internal miniflare
+  // when running `npm run dev`.
+  const { Miniflare } = await import("miniflare");
+
+  const mf = new Miniflare({
+    modules: true,
+    script: `export default { fetch: () => new Response("ok") };`,
+    d1Databases: { DB: "test-philip" },
+    d1Persist: false, // pure in-memory, no .mf/ disk artifacts
+    compatibilityDate: "2025-01-01",
+  });
+
+  const db = await mf.getD1Database("DB");
+
+  // Apply the exact migration we ship (source of truth for schema).
+  // Clean comments, split to individual statements, apply via prepare().run()
+  // (more reliable than exec() for multi-statement DDL in the D1 test shim).
+  const rawMigration = await readFile(
+    join(process.cwd(), "migrations", "0001_initial.sql"),
+    "utf8",
+  );
+  const statements = rawMigration
+    .replace(/--[^\n]*/g, "")
+    .split(";")
+    .map((s) => s.replace(/\s+/g, " ").trim())
+    .filter((s) => s.length > 0);
+
+  for (const stmtSql of statements) {
+    await db.prepare(stmtSql).run();
+  }
+
+  return {
+    db,
+    dispose: () => mf.dispose(),
   };
 }

@@ -3,28 +3,40 @@
 
 /**
  * Stream a chat turn.
+ * Supports the new server-persisted contract (preferred) and the old full-history one.
+ *
  * @param {object} opts
- * @param {Array<{role:string,content:string}>} opts.messages
+ * @param {string} [opts.conversationId]
+ * @param {string} [opts.message] - new style: just the latest user message
+ * @param {Array<{role:string,content:string}>} [opts.messages] - legacy full history
  * @param {(token: string) => void} opts.onToken
+ * @param {(id: string) => void} [opts.onConversationId] - called if server returns X-Conversation-Id (new convos)
  * @param {() => void} [opts.onDone]
  * @param {(message: string) => void} [opts.onError]
  * @param {typeof fetch} [opts.fetchImpl]
  * @param {string} [opts.url]
  */
 export async function streamChat({
+  conversationId,
+  message,
   messages,
   onToken,
+  onConversationId,
   onDone,
   onError,
   fetchImpl = fetch,
   url = "/api/chat",
 }) {
+  const body = message
+    ? { conversationId, message }
+    : { messages };
+
   let res;
   try {
     res = await fetchImpl(url, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ messages }),
+      body: JSON.stringify(body),
     });
   } catch (err) {
     onError?.(err instanceof Error ? err.message : String(err));
@@ -34,6 +46,12 @@ export async function streamChat({
   if (!res.ok || !res.body) {
     onError?.(`Request failed (HTTP ${res.status}).`);
     return;
+  }
+
+  // New conversations (or first turn) learn their server id from the header immediately.
+  const convId = res.headers.get("x-conversation-id");
+  if (convId) {
+    onConversationId?.(convId);
   }
 
   const reader = res.body.getReader();

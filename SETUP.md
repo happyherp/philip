@@ -55,14 +55,81 @@ npm run test:all         # everything
 ```
 
 - **Backend unit** (`test/unit/*.ts`): reference parser, passage lookup against
-  the real bundled JSON, the OpenRouter tool loop (with canned SSE streams), and
-  the SSE handler — all with mocked fetch, no network.
+  the real bundled JSON, the OpenRouter tool loop (with canned SSE streams), the
+  SSE handler, and the D1-backed conversation persistence layer — all with mocked
+  or in-memory dependencies, no network.
 - **Frontend unit** (`test/unit/frontend/*.js`, jsdom): state reducer, markdown
   rendering + HTML sanitization, and the SSE client.
 - **Integration** (`test/integration/*.ts`): real OpenRouter streaming, and the
   key guarantee that Philip quotes the **exact** bundled WEB text via the tool
   (no hallucinated scripture). Skipped unless `RUN_INTEGRATION=1` and a key are
   set.
+
+## Local Database (D1)
+
+Philip stores conversation history in Cloudflare D1 (see the `[[d1_databases]]`
+binding in `wrangler.toml`). The binding appears as `env.DB` inside Pages
+Functions.
+
+### Local Development (`npm run dev`)
+
+`wrangler pages dev` (and therefore `npm run dev`) uses a **local, persistent
+SQLite file** instead of the remote D1 instance. Data survives restarts of the
+dev server.
+
+The file lives under:
+
+```
+.wrangler/state/v3/d1/miniflare-D1DatabaseObject/<hash>.sqlite
+```
+
+Query and inspect it with the Wrangler CLI (always use `--local`):
+
+```bash
+# List tables (including the ones from your migration)
+npx wrangler d1 execute philip-db --local \
+  --command "SELECT name FROM sqlite_master WHERE type='table';"
+
+# See recent conversations
+npx wrangler d1 execute philip-db --local \
+  --command "SELECT id, created_at FROM conversations ORDER BY created_at DESC LIMIT 5;"
+
+# Inspect messages for a specific conversation
+npx wrangler d1 execute philip-db --local \
+  --command "SELECT * FROM messages WHERE conversation_id = '4SoKx0FUL' ORDER BY created_at;"
+
+# Re-apply migrations to the local DB
+npx wrangler d1 migrations apply philip-db --local
+```
+
+To start completely fresh locally, delete the persistence directory:
+
+```bash
+rm -rf .wrangler/state/v3/d1/
+```
+
+### Tests
+
+Backend unit tests that exercise the database layer (`test/unit/db.test.ts`)
+use a **fresh in-memory D1** (via Miniflare with `d1Persist: false`). Before
+the tests run, the exact `migrations/0001_initial.sql` is applied, so the tests
+validate against the real production schema, constraints (CHECK, FOREIGN KEY),
+AUTOINCREMENT ordering, etc.
+
+- No files are written to disk.
+- Each test file / suite gets its own isolated DB instance.
+- The `createTestD1()` helper in `test/helpers.ts` handles setup and teardown.
+
+All other backend unit tests either mock the DB or don't touch persistence.
+
+### Remote vs. Local
+
+- `--local` (or `npm run dev`) → your machine's SQLite file.
+- No flag or `--remote` → the real Cloudflare D1 (requires `wrangler login` and the `database_id` from `wrangler.toml`).
+
+Always prefer `--local` during development so you don't accidentally modify production data.
+
+> **Note:** The local SQLite file used by `npm run dev` is **completely separate** from the in-memory D1 instances created by the unit tests. Running `npm test` never touches your `.wrangler/state` files.
 
 ## Deploy (Cloudflare Pages)
 

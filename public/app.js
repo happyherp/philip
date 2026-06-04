@@ -1,5 +1,5 @@
 // Wires the DOM to the conversation state, renderer, and SSE client.
-import { addMessage, appendToken, createState, toHistory } from "./frontend/state.js";
+import { addMessage, appendToken, createState } from "./frontend/state.js";
 import { renderMarkdownInto } from "./frontend/render.js";
 import { streamChat } from "./frontend/chat-client.js";
 
@@ -9,6 +9,9 @@ const log = document.getElementById("log");
 const form = document.getElementById("composer");
 const input = document.getElementById("input");
 const sendBtn = document.getElementById("send");
+
+// Server-side conversation id (from URL or learned on first turn via header)
+let conversationId = null;
 
 /** Append a message bubble and return its content element. */
 function addBubble(role, markdown) {
@@ -21,6 +24,38 @@ function addBubble(role, markdown) {
   log.appendChild(wrap);
   log.scrollTop = log.scrollHeight;
   return body;
+}
+
+/** Load a persisted conversation from the server and render it (used for ?c=... resumes). */
+async function loadConversation(id) {
+  try {
+    const res = await fetch(`/api/conversations/${encodeURIComponent(id)}`);
+    if (!res.ok) {
+      console.warn("[philip] could not load conversation", id, res.status);
+      return;
+    }
+    const data = await res.json();
+    if (!data || !Array.isArray(data.messages)) return;
+
+    // Remove the static welcome message that lives in the initial HTML.
+    log.innerHTML = "";
+
+    for (const m of data.messages) {
+      addMessage(state, m.role, m.content);
+      addBubble(m.role, m.content);
+    }
+    log.scrollTop = log.scrollHeight;
+  } catch (e) {
+    console.error("[philip] loadConversation failed", e);
+  }
+}
+
+// Resume from URL (?c=...) on initial load. The static welcome in index.html
+// will be cleared by loadConversation.
+const urlId = new URLSearchParams(location.search).get("c");
+if (urlId) {
+  conversationId = urlId;
+  loadConversation(urlId);
 }
 
 async function send(text) {
@@ -37,8 +72,16 @@ async function send(text) {
   bubble.classList.add("thinking");
 
   await streamChat({
-    // Everything up to and including the user turn (drop the empty assistant).
-    messages: toHistory(state).slice(0, -1),
+    conversationId: conversationId || undefined,
+    message: trimmed,
+    onConversationId: (id) => {
+      if (!conversationId) {
+        conversationId = id;
+        const url = new URL(location.href);
+        url.searchParams.set("c", id);
+        history.replaceState(null, "", url.toString());
+      }
+    },
     onToken: (token) => {
       bubble.classList.remove("thinking");
       appendToken(state, token);
@@ -76,5 +119,16 @@ input.addEventListener("keydown", (e) => {
     form.requestSubmit();
   }
 });
+
+const newBtn = document.getElementById("new-chat");
+if (newBtn) {
+  newBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    // Clean reload drops the ?c= param so the static welcome reappears.
+    const url = new URL(location.href);
+    url.searchParams.delete("c");
+    location.href = url.toString();
+  });
+}
 
 input.focus();

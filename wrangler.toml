@@ -5,3 +5,8 @@ pages_build_output_dir = "public"
 # Secrets (set locally in .dev.vars, in prod via `wrangler pages secret put`):
 #   OPENROUTER_API_KEY   required
 #   OPENROUTER_MODEL     optional (defaults to google/gemini-2.5-flash)
+
+[[d1_databases]]
+binding = "DB"
+database_name = "philip-db"
+database_id = "3bb5a0d6-7136-4c54-a3a0-aa74c4f23df0"
