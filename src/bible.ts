@@ -118,13 +118,14 @@ export function formatReference(ref: ParsedReference): string {
 export async function getPassage(
   reference: string,
   assetFetch: AssetFetch,
+  translationId = "web",
 ): Promise<Passage | PassageError> {
   const ref = parseReference(reference);
   if (!ref) {
     return { error: `Could not parse reference "${reference}". Use a form like "John 8:31-32".` };
   }
 
-  const res = await assetFetch(`/bible/web/${ref.book.file}.json`);
+  const res = await assetFetch(`/bible/${translationId}/${ref.book.file}.json`);
   if (!res.ok) {
     return { error: `Could not load text for ${ref.book.name} (HTTP ${res.status}).` };
   }

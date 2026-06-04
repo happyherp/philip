@@ -6,6 +6,8 @@
   "type": "module",
   "scripts": {
     "build:bible": "tsx scripts/build-bible.ts",
+    "build:bible:extra": "tsx scripts/build-bible-extra.ts",
+    "build:bible:all": "npm run build:bible && npm run build:bible:extra",
     "vendor:marked": "tsx scripts/vendor-marked.ts",
     "dev": "wrangler pages dev public",
     "deploy": "wrangler pages deploy public",

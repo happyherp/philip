@@ -2,6 +2,10 @@
 import { addMessage, appendToken, createState } from "./frontend/state.js";
 import { renderMarkdownInto } from "./frontend/render.js";
 import { streamChat } from "./frontend/chat-client.js";
+import { detectLang, getStrings } from "./i18n.js";
+
+const lang = detectLang();
+const t = getStrings(lang);
 
 const state = createState();
 
@@ -9,6 +13,24 @@ const log = document.getElementById("log");
 const form = document.getElementById("composer");
 const input = document.getElementById("input");
 const sendBtn = document.getElementById("send");
+
+// Apply i18n to static UI elements.
+document.title = t.title;
+document.documentElement.lang = lang;
+document.querySelector(".tagline").textContent = t.tagline;
+input.placeholder = t.placeholder;
+sendBtn.textContent = t.send;
+document.getElementById("new-chat").textContent = t.new_chat;
+
+// Update the static welcome message if the language differs from the default English.
+if (lang !== "en") {
+  const welcomeBody = document.querySelector("#log .msg-assistant .msg-body");
+  if (welcomeBody) {
+    welcomeBody.innerHTML =
+      `<p>${t.welcome_greeting}</p>` +
+      `<p>${t.welcome_body} <em>${t.welcome_keyword}</em> ${t.welcome_body_end}</p>`;
+  }
+}
 
 // Server-side conversation id (from URL or learned on first turn via header)
 let conversationId = null;
@@ -37,8 +59,11 @@ async function loadConversation(id) {
     const data = await res.json();
     if (!data || !Array.isArray(data.messages)) return;
 
-    // Remove the static welcome message that lives in the initial HTML.
+    // Preserve the static welcome bubble before clearing, then restore it so
+    // it remains visible when resuming a persisted conversation.
+    const welcomeEl = log.firstElementChild?.cloneNode(true) ?? null;
     log.innerHTML = "";
+    if (welcomeEl) log.appendChild(welcomeEl);
 
     for (const m of data.messages) {
       addMessage(state, m.role, m.content);
@@ -74,6 +99,7 @@ async function send(text) {
   await streamChat({
     conversationId: conversationId || undefined,
     message: trimmed,
+    lang,
     onConversationId: (id) => {
       if (!conversationId) {
         conversationId = id;
@@ -94,7 +120,7 @@ async function send(text) {
       bubble.innerHTML = "";
       const err = document.createElement("div");
       err.className = "error";
-      err.textContent = `Something went wrong: ${message}`;
+      err.textContent = `${t.error_prefix}${message}`;
       bubble.appendChild(err);
     },
   });
