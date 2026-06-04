@@ -1,0 +1,30 @@
+# Run from this directory (dev-container/):  docker compose build | run --rm dev grok | ...
+# Relative paths below resolve against this file's directory, so `..` is the repo root.
+name: philip-dev
+
+services:
+  dev:
+    build:
+      context: .          # the dev-container/ dir — a self-contained build (only needs the entrypoint)
+      args:
+        UID: "1002"
+        GID: "1002"
+        GROK_VERSION: "0.2.22"
+    image: philip-dev
+    working_dir: /workspace
+    volumes:
+      # The project root — edit here in the container, commit from the host.
+      - ../:/workspace
+      # Your Grok login + config. auth.json is read-write so OAuth token refresh
+      # persists back to the host. grok-build access rides on this login.
+      - ${HOME}/.grok/auth.json:/home/dev/.grok/auth.json
+      - ${HOME}/.grok/config.toml:/home/dev/.grok/config.toml
+      # Optional: bring your skills/plugins for full parity with the host.
+      # - ${HOME}/.grok/skills:/home/dev/.grok/skills:ro
+    environment:
+      - HOME=/home/dev
+    ports:
+      - "8788:8788"   # wrangler pages dev
+    stdin_open: true
+    tty: true
+    # No git credentials are mounted — commit from the host.
