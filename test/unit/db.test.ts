@@ -9,6 +9,7 @@ import {
   appendMessage,
   getConversationMessages,
   getConversation,
+  getOrCreateWhatsAppConversation,
 } from "../../src/db.ts";
 
 describe("db (D1 persistence layer)", () => {
@@ -25,7 +26,7 @@ describe("db (D1 persistence layer)", () => {
 
   beforeEach(async () => {
     // Fresh data per test while reusing the (cheap) in-memory D1 instance.
-    await db.exec("DELETE FROM messages; DELETE FROM conversations;");
+    await db.exec("DELETE FROM whatsapp_sessions; DELETE FROM messages; DELETE FROM conversations;");
   });
 
   describe("generateConversationId", () => {
@@ -122,6 +123,29 @@ describe("db (D1 persistence layer)", () => {
     it("getConversationMessages returns [] for unknown id", async () => {
       const msgs = await getConversationMessages(db, "definitely-not-a-real-id-456");
       expect(msgs).toEqual([]);
+    });
+  });
+
+  describe("getOrCreateWhatsAppConversation", () => {
+    it("creates a conversation on first call for a phone number", async () => {
+      const convId = await getOrCreateWhatsAppConversation(db, "whatsapp:+10001112222");
+      expect(typeof convId).toBe("string");
+      expect(convId.length).toBeGreaterThan(0);
+
+      const conv = await getConversation(db, convId);
+      expect(conv).not.toBeNull();
+    });
+
+    it("returns the same conversation id on subsequent calls", async () => {
+      const id1 = await getOrCreateWhatsAppConversation(db, "whatsapp:+10001112222");
+      const id2 = await getOrCreateWhatsAppConversation(db, "whatsapp:+10001112222");
+      expect(id1).toBe(id2);
+    });
+
+    it("creates separate conversations for different phone numbers", async () => {
+      const id1 = await getOrCreateWhatsAppConversation(db, "whatsapp:+10001112222");
+      const id2 = await getOrCreateWhatsAppConversation(db, "whatsapp:+19998887777");
+      expect(id1).not.toBe(id2);
     });
   });
 

@@ -73,6 +73,29 @@ export async function getConversationMessages(
   return (res.results ?? []).map((r) => ({ role: r.role, content: r.content }));
 }
 
+/**
+ * Return the conversation id for a WhatsApp phone number, creating a new
+ * conversation (and session row) the first time the number is seen.
+ */
+export async function getOrCreateWhatsAppConversation(
+  db: D1Database,
+  phoneNumber: string,
+): Promise<string> {
+  const existing = await db
+    .prepare("SELECT conversation_id FROM whatsapp_sessions WHERE phone_number = ?")
+    .bind(phoneNumber)
+    .first<{ conversation_id: string }>();
+
+  if (existing) return existing.conversation_id;
+
+  const convId = await createConversation(db);
+  await db
+    .prepare("INSERT INTO whatsapp_sessions (phone_number, conversation_id) VALUES (?, ?)")
+    .bind(phoneNumber, convId)
+    .run();
+  return convId;
+}
+
 /** Load full conversation (metadata + messages). Returns null if not found. */
 export async function getConversation(
   db: D1Database,

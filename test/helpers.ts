@@ -97,21 +97,18 @@ export async function createTestD1(): Promise<{
 
   const db = await mf.getD1Database("DB");
 
-  // Apply the exact migration we ship (source of truth for schema).
-  // Clean comments, split to individual statements, apply via prepare().run()
-  // (more reliable than exec() for multi-statement DDL in the D1 test shim).
-  const rawMigration = await readFile(
-    join(process.cwd(), "migrations", "0001_initial.sql"),
-    "utf8",
-  );
-  const statements = rawMigration
-    .replace(/--[^\n]*/g, "")
-    .split(";")
-    .map((s) => s.replace(/\s+/g, " ").trim())
-    .filter((s) => s.length > 0);
-
-  for (const stmtSql of statements) {
-    await db.prepare(stmtSql).run();
+  // Apply all migrations in order (source of truth for schema).
+  const migrationFiles = ["0001_initial.sql", "0002_whatsapp.sql"];
+  for (const file of migrationFiles) {
+    const rawMigration = await readFile(join(process.cwd(), "migrations", file), "utf8");
+    const statements = rawMigration
+      .replace(/--[^\n]*/g, "")
+      .split(";")
+      .map((s) => s.replace(/\s+/g, " ").trim())
+      .filter((s) => s.length > 0);
+    for (const stmtSql of statements) {
+      await db.prepare(stmtSql).run();
+    }
   }
 
   return {
