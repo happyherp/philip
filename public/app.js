@@ -59,8 +59,11 @@ async function loadConversation(id) {
     const data = await res.json();
     if (!data || !Array.isArray(data.messages)) return;
 
-    // Remove the static welcome message that lives in the initial HTML.
+    // Preserve the static welcome bubble before clearing, then restore it so
+    // it remains visible when resuming a persisted conversation.
+    const welcomeEl = log.firstElementChild?.cloneNode(true) ?? null;
     log.innerHTML = "";
+    if (welcomeEl) log.appendChild(welcomeEl);
 
     for (const m of data.messages) {
       addMessage(state, m.role, m.content);
