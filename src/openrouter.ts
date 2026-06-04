@@ -61,17 +61,26 @@ export async function runChat(history: ChatMessage[], deps: RunChatDeps): Promis
     if (deps.referer) headers["HTTP-Referer"] = deps.referer;
     if (deps.title) headers["X-Title"] = deps.title;
 
-    const res = await fetchImpl(OPENROUTER_URL, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        model: deps.model,
-        messages,
-        tools: [GET_PASSAGE_TOOL],
-        tool_choice: "auto",
-        stream: true,
-      }),
-    });
+    const abort = new AbortController();
+    // Abort if OpenRouter doesn't respond within 30s — prevents silent hangs.
+    const timer = setTimeout(() => abort.abort(new Error("OpenRouter request timed out after 30s")), 30_000);
+    let res: Response;
+    try {
+      res = await fetchImpl(OPENROUTER_URL, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          model: deps.model,
+          messages,
+          tools: [GET_PASSAGE_TOOL],
+          tool_choice: "auto",
+          stream: true,
+        }),
+        signal: abort.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
 
     if (!res.ok || !res.body) {
       const detail = res.body ? await safeText(res) : "";

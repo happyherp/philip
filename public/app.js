@@ -46,6 +46,7 @@ async function send(text) {
       log.scrollTop = log.scrollHeight;
     },
     onError: (message) => {
+      console.error("[philip]", message);
       bubble.classList.remove("thinking");
       bubble.innerHTML = "";
       const err = document.createElement("div");
@@ -53,8 +54,9 @@ async function send(text) {
       err.textContent = `Something went wrong: ${message}`;
       bubble.appendChild(err);
     },
-    onDone: () => setBusy(false),
   });
+  // Always unfreeze the UI when the stream ends, regardless of success/error.
+  setBusy(false);
 }
 
 function setBusy(busy) {
