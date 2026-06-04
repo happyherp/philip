@@ -73,6 +73,33 @@ export async function getConversationMessages(
   return (res.results ?? []).map((r) => ({ role: r.role, content: r.content }));
 }
 
+/**
+ * Get or create a WhatsApp session for a given wa_id (E.164 phone number).
+ * One persistent conversation per number.
+ */
+export async function getOrCreateWhatsAppSession(
+  db: D1Database,
+  waId: string,
+): Promise<string> {
+  const existing = await db
+    .prepare("SELECT conversation_id FROM whatsapp_sessions WHERE wa_id = ?")
+    .bind(waId)
+    .first<{ conversation_id: string }>();
+
+  if (existing) return existing.conversation_id;
+
+  const convId = await createConversation(db);
+  const now = Date.now();
+  await db
+    .prepare(
+      "INSERT INTO whatsapp_sessions (wa_id, conversation_id, created_at, updated_at) VALUES (?, ?, ?, ?)",
+    )
+    .bind(waId, convId, now, now)
+    .run();
+
+  return convId;
+}
+
 /** Load full conversation (metadata + messages). Returns null if not found. */
 export async function getConversation(
   db: D1Database,

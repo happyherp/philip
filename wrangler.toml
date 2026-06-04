@@ -3,8 +3,10 @@ compatibility_date = "2025-01-01"
 pages_build_output_dir = "public"
 
 # Secrets (set locally in .dev.vars, in prod via `wrangler pages secret put`):
-#   OPENROUTER_API_KEY   required
-#   OPENROUTER_MODEL     optional (defaults to google/gemini-2.5-flash)
+#   OPENROUTER_API_KEY      required
+#   OPENROUTER_MODEL        optional (defaults to google/gemini-2.5-flash)
+#   WHATSAPP_TOKEN          required for WhatsApp — permanent system-user access token from Meta
+#   WHATSAPP_VERIFY_TOKEN   required for WhatsApp — arbitrary string set in Meta webhook config
 
 [[d1_databases]]
 binding = "DB"
