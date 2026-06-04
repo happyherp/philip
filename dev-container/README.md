@@ -61,11 +61,30 @@ docker compose run --rm --service-ports dev \
 > `wrangler pages dev` binds to localhost *inside* the container; `--ip 0.0.0.0` is what
 > makes it reachable through the forwarded port.
 
+## Host user IDs (portability)
+
+The container builds a `dev` user matching your **host UID/GID** so files it creates in
+the bind-mounted workspace stay owned by you. This is a **Linux-native** concern —
+macOS/Windows Docker Desktop remap ownership automatically, so you can ignore it there.
+
+The IDs come from `dev-container/.env` (gitignored, machine-specific) and default to
+`1000:1000` if it's absent. On a new machine, generate yours once (from this directory):
+
+```bash
+printf 'UID=%s\nGID=%s\n' "$(id -u)" "$(id -g)" > .env
+docker compose build
+```
+
+Or pass them inline for a single build:
+
+```bash
+UID=$(id -u) GID=$(id -g) docker compose build
+```
+
 ## Customizing
 
 Override build args in [`docker-compose.yml`](docker-compose.yml) under `build.args`:
 
-- `UID` / `GID` — match a different host user (default `1002`).
 - `GROK_VERSION` — pin a different Grok release (default `0.2.22`).
 
 Optional mounts (commented in the compose file):

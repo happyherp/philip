@@ -7,8 +7,13 @@ services:
     build:
       context: .          # the dev-container/ dir — a self-contained build (only needs the entrypoint)
       args:
-        UID: "1002"
-        GID: "1002"
+        # Build a container user matching your HOST UID/GID so files created in the
+        # bind-mounted /workspace stay owned by you (a Linux-native concern; Docker Desktop
+        # on macOS/Windows remaps ownership automatically). Values come from
+        # dev-container/.env (gitignored, per-machine) and default to 1000 if unset.
+        # One-off override:  UID=$(id -u) GID=$(id -g) docker compose build
+        UID: "${UID:-1000}"
+        GID: "${GID:-1000}"
         GROK_VERSION: "0.2.22"
     image: philip-dev
     working_dir: /workspace
