@@ -100,7 +100,7 @@ async function send(text) {
     conversationId: conversationId || undefined,
     message: trimmed,
     lang,
-    cfTurnstileToken: await getTurnstileToken(),
+    cfTurnstileToken: turnstileToken || undefined,
     onConversationId: (id) => {
       if (!conversationId) {
         conversationId = id;
@@ -125,9 +125,9 @@ async function send(text) {
       bubble.appendChild(err);
     },
   });
-  // Always unfreeze the UI when the stream ends, regardless of success/error.
+  // Reset Turnstile for the next message — the UI stays disabled until
+  // a fresh token arrives via the onTurnstileToken callback.
   resetTurnstile();
-  setBusy(false);
 }
 
 function setBusy(busy) {
@@ -152,27 +152,24 @@ input.addEventListener("keydown", (e) => {
 // The widget calls window.onTurnstileToken when the user passes the challenge.
 // Tokens are single-use; we reset the widget after each chat round.
 let turnstileToken = null;
-let turnstileResolve = null;
 const turnstileWidgetEl = document.getElementById("turnstile-widget");
+
+// Disable send until Turnstile verifies the user.
+setBusy(true);
 
 window.onTurnstileToken = (token) => {
   turnstileToken = token;
-  if (turnstileResolve) {
-    turnstileResolve(token);
-    turnstileResolve = null;
-  }
+  setBusy(false);
+  // Hide the widget 2 seconds after verification.
+  setTimeout(() => {
+    if (turnstileWidgetEl) turnstileWidgetEl.style.display = "none";
+  }, 2000);
 };
-
-/** Returns the current token, or waits for the callback if it hasn't fired yet. */
-function getTurnstileToken() {
-  if (turnstileToken) return Promise.resolve(turnstileToken);
-  return new Promise((resolve) => { turnstileResolve = resolve; });
-}
 
 function resetTurnstile() {
   turnstileToken = null;
-  turnstileResolve = null;
   if (typeof turnstile !== "undefined" && turnstileWidgetEl) {
+    turnstileWidgetEl.style.display = "";
     turnstile.reset(turnstileWidgetEl);
   }
 }
