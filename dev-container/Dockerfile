@@ -1,9 +1,13 @@
 # syntax=docker/dockerfile:1
 #
-# Dev container for Philip: Node 22 toolchain + the Grok coding-agent CLI (grok-build).
-# The project directory is bind-mounted at runtime (see docker-compose.yml); your Grok
-# login (~/.grok/auth.json) is mounted read-write so grok-build works with your account.
-FROM node:22-bookworm-slim
+# Dev container for Philip: Node 22 toolchain + Playwright browsers + the Grok
+# coding-agent CLI (grok-build).  The project directory is bind-mounted at runtime
+# (see docker-compose.yml); your Grok login (~/.grok/auth.json) is mounted read-write
+# so grok-build works with your account.
+#
+# The base image tag MUST match the @playwright/test version in package.json.
+# When you bump the npm package, bump this tag to match.
+FROM mcr.microsoft.com/playwright:v1.60.0-noble
 
 # Match the host user so files created in the bind-mounted /workspace stay owned by you.
 ARG UID=1002
@@ -20,7 +24,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# Create the dev user with the host's UID/GID (node base image already uses uid 1000).
+# Create the dev user with the host's UID/GID (playwright base image uses uid 1001 for pwuser).
 RUN groupadd -g ${GID} dev 2>/dev/null || true \
  && useradd -m -u ${UID} -g ${GID} -s /bin/bash dev
 
