@@ -17,10 +17,10 @@ const micBtn = document.getElementById("mic");
 
 // --- Voice input ---
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-if (!SpeechRecognition) {
+if (micBtn && !SpeechRecognition) {
   micBtn.title = t.mic_no_support;
   micBtn.disabled = true;
-} else {
+} else if (micBtn) {
   const recognition = new SpeechRecognition();
   recognition.continuous = false;
   recognition.interimResults = true;
@@ -194,7 +194,7 @@ async function send(text) {
 function setBusy(busy) {
   sendBtn.disabled = busy;
   input.disabled = busy;
-  micBtn.disabled = busy;
+  if (micBtn) micBtn.disabled = busy;
   if (!busy) input.focus();
 }
 
