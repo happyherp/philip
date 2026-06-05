@@ -100,7 +100,7 @@ async function send(text) {
     conversationId: conversationId || undefined,
     message: trimmed,
     lang,
-    cfTurnstileToken: turnstileToken || undefined,
+    cfTurnstileToken: !conversationId ? turnstileToken || undefined : undefined,
     onConversationId: (id) => {
       if (!conversationId) {
         conversationId = id;
@@ -125,9 +125,8 @@ async function send(text) {
       bubble.appendChild(err);
     },
   });
-  // Reset Turnstile for the next message — the UI stays disabled until
-  // a fresh token arrives via the onTurnstileToken callback.
-  resetTurnstile();
+
+  setBusy(false);
 }
 
 function setBusy(busy) {
@@ -184,15 +183,6 @@ window.onTurnstileError = () => {
   clearTimeout(turnstileTimeout);
   setBusy(false);
 };
-
-function resetTurnstile() {
-  if (!turnstileActive) return;
-  turnstileToken = null;
-  if (typeof turnstile !== "undefined" && turnstileWidgetEl) {
-    turnstileWidgetEl.style.display = "";
-    turnstile.reset(turnstileWidgetEl);
-  }
-}
 
 const newBtn = document.getElementById("new-chat");
 if (newBtn) {
