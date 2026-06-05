@@ -32,6 +32,11 @@ jobs:
 
       - run: npm test
 
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - run: npm run test:e2e
+
       - name: Integration tests (skipped without OPENROUTER_API_KEY)
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
