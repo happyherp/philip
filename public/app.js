@@ -195,7 +195,7 @@ async function send(text) {
 function setBusy(busy) {
   sendBtn.disabled = busy;
   input.disabled = busy;
-  if (micBtn) micBtn.disabled = busy;
+  if (micBtn && SpeechRecognition) micBtn.disabled = busy;
   if (!busy) input.focus();
 }
 
