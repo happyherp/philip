@@ -100,7 +100,7 @@ async function send(text) {
     conversationId: conversationId || undefined,
     message: trimmed,
     lang,
-    cfTurnstileToken: turnstileToken || undefined,
+    cfTurnstileToken: await getTurnstileToken(),
     onConversationId: (id) => {
       if (!conversationId) {
         conversationId = id;
@@ -152,13 +152,28 @@ input.addEventListener("keydown", (e) => {
 // The widget calls window.onTurnstileToken when the user passes the challenge.
 // Tokens are single-use; we reset the widget after each chat round.
 let turnstileToken = null;
-const turnstileWidgetId = document.getElementById("turnstile-widget");
-window.onTurnstileToken = (token) => { turnstileToken = token; };
+let turnstileResolve = null;
+const turnstileWidgetEl = document.getElementById("turnstile-widget");
+
+window.onTurnstileToken = (token) => {
+  turnstileToken = token;
+  if (turnstileResolve) {
+    turnstileResolve(token);
+    turnstileResolve = null;
+  }
+};
+
+/** Returns the current token, or waits for the callback if it hasn't fired yet. */
+function getTurnstileToken() {
+  if (turnstileToken) return Promise.resolve(turnstileToken);
+  return new Promise((resolve) => { turnstileResolve = resolve; });
+}
 
 function resetTurnstile() {
   turnstileToken = null;
-  if (typeof turnstile !== "undefined" && turnstileWidgetId) {
-    turnstile.reset(turnstileWidgetId);
+  turnstileResolve = null;
+  if (typeof turnstile !== "undefined" && turnstileWidgetEl) {
+    turnstile.reset(turnstileWidgetEl);
   }
 }
 
