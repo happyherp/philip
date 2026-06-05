@@ -3,8 +3,12 @@ compatibility_date = "2025-01-01"
 pages_build_output_dir = "public"
 
 # Secrets (set locally in .dev.vars, in prod via `wrangler pages secret put`):
-#   OPENROUTER_API_KEY   required
-#   OPENROUTER_MODEL     optional (defaults to google/gemini-2.5-flash)
+#   OPENROUTER_API_KEY      required
+#   OPENROUTER_MODEL        optional (defaults to google/gemini-2.5-flash)
+#   TURNSTILE_SECRET_KEY    required for bot protection; use test secret for preview (see SETUP.md)
+
+[vars]
+TURNSTILE_SITE_KEY = "0x4AAAAAADe9n8-uSsPgG9eP"
 
 [[d1_databases]]
 binding = "DB"
@@ -12,8 +16,12 @@ database_name = "philip-db"
 database_id = "3bb5a0d6-7136-4c54-a3a0-aa74c4f23df0"
 
 # Preview deployments (every non-main branch / PR) use an isolated database so PR
-# testing never touches production conversation data. Only D1 is configured at the
-# top level, so only D1 needs to be redeclared here (non-inheritable keys rule).
+# testing never touches production conversation data. Non-inheritable keys (vars, d1)
+# must be redeclared here; set TURNSTILE_SECRET_KEY to the always-pass test secret
+# in the Cloudflare dashboard under preview secrets (see SETUP.md).
+[env.preview.vars]
+TURNSTILE_SITE_KEY = "1x00000000000000000000AA"
+
 [[env.preview.d1_databases]]
 binding = "DB"
 database_name = "philip-db-preview"

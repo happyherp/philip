@@ -242,10 +242,14 @@ Two things make previews fully functional, separate from production:
   under `[env.preview]` in `wrangler.toml`) so PR testing never touches production
   conversations. Re-apply migrations to it with
   `npx wrangler d1 migrations apply philip-db-preview --remote --env preview`.
-- **Secret** — Pages secrets are per-environment and the CLI can't target preview, so
-  set `OPENROUTER_API_KEY` (and optionally `OPENROUTER_MODEL`) once in the dashboard:
-  **Workers & Pages → philip → Settings → Variables and Secrets → Preview**. Without
-  it, the chat API returns 500 in previews (static pages still load).
+- **Secrets** — Pages secrets are per-environment and the CLI can't target preview, so
+  set them once in the dashboard:
+  **Workers & Pages → philip → Settings → Variables and Secrets → Preview**.
+  - `OPENROUTER_API_KEY` — required; without it the chat API returns 500 in previews.
+  - `TURNSTILE_SECRET_KEY` — set to the always-pass test secret
+    `1x0000000000000000000000000000000AA` so Turnstile verification passes on
+    every preview branch. The site key is already set to the matching always-pass
+    value via `[env.preview.vars]` in `wrangler.toml`.
 
 > Note: `.github/workflows/ci.yml` also runs the test suite on PRs, so tests run twice
 > on a PR (once in CI, once in the deploy workflow). Harmless; can be slimmed later.
