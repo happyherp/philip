@@ -207,9 +207,10 @@ npx wrangler pages secret put OPENROUTER_MODEL
 
 ### Continuous deployment (GitHub Actions)
 
-Pushes to `main` (and manual runs via "Run workflow") automatically deploy via
-`.github/workflows/deploy.yml`. The workflow runs typecheck + tests + integration
-tests (if the key is available) before deploying.
+Pushes to `main` (and manual runs via "Run workflow") automatically deploy to
+**production** via `.github/workflows/deploy.yml`. Every **pull request** deploys a
+**preview** (see below). The workflow runs typecheck + tests + integration tests (if
+the key is available) before deploying.
 
 Required GitHub repository secret:
 
@@ -226,6 +227,28 @@ Create the token:
 You can also keep `OPENROUTER_API_KEY` as a GitHub secret (already used by the
 integration test job in CI). On successful deploys the live site will use the
 Pages secret you set with `wrangler pages secret put` (or the dashboard).
+
+### Preview deployments (pull requests)
+
+Opening a PR deploys a Cloudflare Pages **preview** at
+`https://<branch>.philip-3jf.pages.dev`, and the workflow posts (and keeps updating)
+the URL as a PR comment. The deploy step picks the environment from the branch:
+`main` → production, anything else → preview. PRs from forks skip the deploy/comment
+steps (they can't read repo secrets) but still run typecheck + tests.
+
+Two things make previews fully functional, separate from production:
+
+- **Database** — previews use an isolated D1 database `philip-db-preview` (configured
+  under `[env.preview]` in `wrangler.toml`) so PR testing never touches production
+  conversations. Re-apply migrations to it with
+  `npx wrangler d1 migrations apply philip-db-preview --remote --env preview`.
+- **Secret** — Pages secrets are per-environment and the CLI can't target preview, so
+  set `OPENROUTER_API_KEY` (and optionally `OPENROUTER_MODEL`) once in the dashboard:
+  **Workers & Pages → philip → Settings → Variables and Secrets → Preview**. Without
+  it, the chat API returns 500 in previews (static pages still load).
+
+> Note: `.github/workflows/ci.yml` also runs the test suite on PRs, so tests run twice
+> on a PR (once in CI, once in the deploy workflow). Harmless; can be slimmed later.
 
 Cloudflare Pages scales to zero — you only pay (nothing, on the free tier) when
 someone is actually reading.
