@@ -100,6 +100,7 @@ async function send(text) {
     conversationId: conversationId || undefined,
     message: trimmed,
     lang,
+    cfTurnstileToken: turnstileToken || undefined,
     onConversationId: (id) => {
       if (!conversationId) {
         conversationId = id;
@@ -125,6 +126,7 @@ async function send(text) {
     },
   });
   // Always unfreeze the UI when the stream ends, regardless of success/error.
+  resetTurnstile();
   setBusy(false);
 }
 
@@ -145,6 +147,20 @@ input.addEventListener("keydown", (e) => {
     form.requestSubmit();
   }
 });
+
+// --- Cloudflare Turnstile ---
+// The widget calls window.onTurnstileToken when the user passes the challenge.
+// Tokens are single-use; we reset the widget after each chat round.
+let turnstileToken = null;
+const turnstileWidgetId = document.getElementById("turnstile-widget");
+window.onTurnstileToken = (token) => { turnstileToken = token; };
+
+function resetTurnstile() {
+  turnstileToken = null;
+  if (typeof turnstile !== "undefined" && turnstileWidgetId) {
+    turnstile.reset(turnstileWidgetId);
+  }
+}
 
 const newBtn = document.getElementById("new-chat");
 if (newBtn) {
