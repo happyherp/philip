@@ -48,7 +48,13 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   }
 
   // --- Turnstile bot verification (skipped when secret is not configured) ---
-  if (env.TURNSTILE_SECRET_KEY) {
+  // Only require verification for the first message of a new conversation.
+  // Once the user passes the challenge, subsequent messages in the same
+  // conversation are trusted (the token is single-use anyway).
+  const conversationId =
+    typeof body.conversationId === "string" ? body.conversationId : undefined;
+
+  if (env.TURNSTILE_SECRET_KEY && !conversationId) {
     const cfToken = typeof body.cfTurnstileToken === "string" ? body.cfTurnstileToken : "";
     if (!cfToken) {
       return json({ error: "Bot verification token is missing." }, 403);
@@ -65,8 +71,6 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     }
   }
 
-  const conversationId =
-    typeof body.conversationId === "string" ? body.conversationId : undefined;
   const userMessage =
     typeof body.message === "string" ? body.message.trim() : "";
 
