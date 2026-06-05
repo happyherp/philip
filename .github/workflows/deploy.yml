@@ -51,6 +51,7 @@ jobs:
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: "944c6380fdc8979e3d6b720bab351928"
           # Project name and output dir come from wrangler.toml. The branch decides
           # production (main) vs preview (everything else).
           command: pages deploy public --branch=${{ github.head_ref || github.ref_name }}
