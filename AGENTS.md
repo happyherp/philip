@@ -1,5 +1,7 @@
 # Project Instructions
 
+If you have not read the [README.md](README.md) and the [SETUP.md](SETUP.md), do so now.
+
 ## Workflow
 
 When you are done with a task:
@@ -10,4 +12,4 @@ When you are done with a task:
 4. **Push** the branch to `origin`.
 5. **Open a pull request** against `main`.
 
-Never commit directly to `main`.
+Never commit directly to `main`, unless told so explicitly by the user.  
