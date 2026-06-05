@@ -1,8 +1,8 @@
 # Dev container (Node + Grok)
 
-A ready-to-use development container for Philip. It ships Node 22, the project tooling
-(wrangler, vitest), and the **Grok coding-agent CLI** (`grok-build`) preinstalled and
-authenticated with your account.
+A ready-to-use development container for Philip. It ships Node 22, **Playwright browsers**
+(Chromium, Firefox, WebKit), the project tooling (wrangler, vitest), and the **Grok
+coding-agent CLI** (`grok-build`) preinstalled and authenticated with your account.
 
 The project directory is bind-mounted into the container, so you **edit and test inside
 the container but commit from the host** — the container has **no git credentials**.
@@ -11,7 +11,7 @@ the container but commit from the host** — the container has **no git credenti
 
 | File | Purpose |
 | --- | --- |
-| [`Dockerfile`](Dockerfile) | `node:22-bookworm-slim` + `git`/`curl`/`ripgrep`/`jq`, a `dev` user matching your host UID/GID, and Grok installed via the official script (pinned to `GROK_VERSION`). |
+| [`Dockerfile`](Dockerfile) | `mcr.microsoft.com/playwright:v1.60.0-noble` (Node 22 + Playwright browsers) + `git`/`curl`/`ripgrep`/`jq`, a `dev` user matching your host UID/GID, and Grok installed via the official script (pinned to `GROK_VERSION`). The base-image tag **must** match the `@playwright/test` version in `package.json`. |
 | [`docker-compose.yml`](docker-compose.yml) | Bind-mounts the repo + your Grok login, forwards port `8788`, runs interactively. |
 | [`docker-entrypoint.sh`](docker-entrypoint.sh) | Runs `npm ci` only if `node_modules` is missing (normally it's bind-mounted in). |
 | [`.dockerignore`](.dockerignore) | Keeps the (already tiny) build context clean. |
@@ -52,6 +52,7 @@ docker compose run --rm dev bash   # or drop into a shell
 ```bash
 # Tests / typecheck:
 docker compose run --rm dev npm test
+docker compose run --rm dev npm run test:e2e        # Playwright E2E (Chromium)
 docker compose run --rm dev npm run typecheck
 
 # One-shot (headless) Grok prompt — also the real auth check:
@@ -91,6 +92,9 @@ docker compose build
 Override build args in [`docker-compose.yml`](docker-compose.yml) under `build.args`:
 
 - `GROK_VERSION` — pin a different Grok release (default `0.2.22`).
+
+When bumping `@playwright/test` in `package.json`, update the `FROM` tag in the
+[`Dockerfile`](Dockerfile) to match (e.g. `v1.61.0-noble` for `@playwright/test@1.61.0`).
 
 Optional mount (commented in the compose file):
 

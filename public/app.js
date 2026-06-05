@@ -13,6 +13,69 @@ const log = document.getElementById("log");
 const form = document.getElementById("composer");
 const input = document.getElementById("input");
 const sendBtn = document.getElementById("send");
+const micBtn = document.getElementById("mic");
+
+// --- Voice input ---
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+if (micBtn && !SpeechRecognition) {
+  micBtn.title = t.mic_no_support;
+  micBtn.disabled = true;
+} else if (micBtn) {
+  const recognition = new SpeechRecognition();
+  recognition.continuous = false;
+  recognition.interimResults = true;
+  recognition.lang = lang;
+
+  let isRecording = false;
+  let interimStart = 0; // tracks where interim text begins in the textarea
+
+  micBtn.title = t.mic_start;
+
+  micBtn.addEventListener("click", () => {
+    if (isRecording) {
+      recognition.stop();
+    } else {
+      interimStart = input.value.length;
+      // Add a space separator if there's existing text
+      if (interimStart > 0 && !input.value.endsWith(" ")) {
+        input.value += " ";
+        interimStart = input.value.length;
+      }
+      recognition.start();
+    }
+  });
+
+  recognition.addEventListener("start", () => {
+    isRecording = true;
+    micBtn.classList.add("recording");
+    micBtn.title = t.mic_stop;
+  });
+
+  recognition.addEventListener("result", (e) => {
+    const transcript = Array.from(e.results)
+      .map((r) => r[0].transcript)
+      .join("");
+    // Replace everything from interimStart onward with the latest transcript
+    input.value = input.value.slice(0, interimStart) + transcript;
+    // Auto-grow textarea
+    input.style.height = "auto";
+    input.style.height = input.scrollHeight + "px";
+  });
+
+  recognition.addEventListener("end", () => {
+    isRecording = false;
+    micBtn.classList.remove("recording");
+    micBtn.title = t.mic_start;
+    input.focus();
+  });
+
+  recognition.addEventListener("error", (e) => {
+    console.warn("[philip] speech recognition error:", e.error);
+    isRecording = false;
+    micBtn.classList.remove("recording");
+    micBtn.title = t.mic_start;
+  });
+}
 
 // Apply i18n to static UI elements.
 document.title = t.title;
@@ -132,6 +195,7 @@ async function send(text) {
 function setBusy(busy) {
   sendBtn.disabled = busy;
   input.disabled = busy;
+  if (micBtn) micBtn.disabled = busy;
   if (!busy) input.focus();
 }
 
