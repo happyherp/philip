@@ -100,6 +100,7 @@ async function send(text) {
     conversationId: conversationId || undefined,
     message: trimmed,
     lang,
+    cfTurnstileToken: turnstileToken || undefined,
     onConversationId: (id) => {
       if (!conversationId) {
         conversationId = id;
@@ -124,8 +125,9 @@ async function send(text) {
       bubble.appendChild(err);
     },
   });
-  // Always unfreeze the UI when the stream ends, regardless of success/error.
-  setBusy(false);
+  // Reset Turnstile for the next message — the UI stays disabled until
+  // a fresh token arrives via the onTurnstileToken callback.
+  resetTurnstile();
 }
 
 function setBusy(busy) {
@@ -145,6 +147,52 @@ input.addEventListener("keydown", (e) => {
     form.requestSubmit();
   }
 });
+
+// --- Cloudflare Turnstile ---
+// The widget calls window.onTurnstileToken when the user passes the challenge.
+// Tokens are single-use; we reset the widget after each chat round.
+// If Turnstile fails to load (CSP, localhost, missing key) the UI unlocks
+// after a short timeout so the app remains usable.
+let turnstileToken = null;
+let turnstileActive = false;
+const turnstileWidgetEl = document.getElementById("turnstile-widget");
+
+// Disable send until Turnstile verifies — or until the timeout fires.
+setBusy(true);
+const turnstileTimeout = setTimeout(() => {
+  if (!turnstileActive) {
+    // Turnstile never completed — unlock the UI and hide the widget.
+    if (turnstileWidgetEl) turnstileWidgetEl.style.display = "none";
+    setBusy(false);
+  }
+}, 5000);
+
+window.onTurnstileToken = (token) => {
+  turnstileActive = true;
+  turnstileToken = token;
+  clearTimeout(turnstileTimeout);
+  setBusy(false);
+  // Hide the widget 2 seconds after verification.
+  setTimeout(() => {
+    if (turnstileWidgetEl) turnstileWidgetEl.style.display = "none";
+  }, 2000);
+};
+
+// Called by Turnstile on explicit failure (bad sitekey, CSP block, etc.)
+window.onTurnstileError = () => {
+  if (turnstileWidgetEl) turnstileWidgetEl.style.display = "none";
+  clearTimeout(turnstileTimeout);
+  setBusy(false);
+};
+
+function resetTurnstile() {
+  if (!turnstileActive) return;
+  turnstileToken = null;
+  if (typeof turnstile !== "undefined" && turnstileWidgetEl) {
+    turnstileWidgetEl.style.display = "";
+    turnstile.reset(turnstileWidgetEl);
+  }
+}
 
 const newBtn = document.getElementById("new-chat");
 if (newBtn) {
