@@ -2,12 +2,9 @@
 // verified scripture. Distilled from README.md (posture) and original-prompt.md
 // (the walk-through-the-Bible conversation model that worked in practice).
 //
-// Prompts live in src/prompts/*.md for readability; Wrangler bundles them as
-// text modules (see [[rules]] in wrangler.toml).
-
-import BASE_PROMPT from "./prompts/base.md";
-import ES_OVERRIDES from "./prompts/es.md";
-import DE_OVERRIDES from "./prompts/de.md";
+import BASE_PROMPT from "./prompts/base.ts";
+import ES_OVERRIDES from "./prompts/es.ts";
+import DE_OVERRIDES from "./prompts/de.ts";
 
 export const GET_PASSAGE_TOOL = {
   type: "function" as const,
