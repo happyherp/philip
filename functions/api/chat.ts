@@ -25,7 +25,7 @@ interface Env {
   TURNSTILE_SECRET_KEY?: string;
 }
 
-const DEFAULT_MODEL = "google/gemini-2.5-flash";
+const DEFAULT_MODEL = "anthropic/claude-sonnet-4";
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
   const { request, env } = context;

@@ -34,7 +34,7 @@ Local secrets live in `.dev.vars` (gitignored):
 
 ```
 OPENROUTER_API_KEY=sk-or-...
-OPENROUTER_MODEL=google/gemini-2.5-flash   # optional; any tool-calling model on OpenRouter
+OPENROUTER_MODEL=anthropic/claude-sonnet-4   # optional; any tool-calling model on OpenRouter
 TURNSTILE_SECRET_KEY=...                   # optional; enables Cloudflare Turnstile bot protection
 ```
 
