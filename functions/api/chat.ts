@@ -15,12 +15,14 @@ import {
   getConversationMessages,
 } from "../../src/db.ts";
 import { streamChatResponse } from "../../src/chat.ts";
+import { verifyTurnstileToken } from "../../src/turnstile.ts";
 
 interface Env {
   ASSETS: Fetcher;
   DB: D1Database;
   OPENROUTER_API_KEY: string;
   OPENROUTER_MODEL?: string;
+  TURNSTILE_SECRET_KEY?: string;
 }
 
 const DEFAULT_MODEL = "google/gemini-2.5-flash";
@@ -45,8 +47,30 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     return json({ error: "Invalid JSON body." }, 400);
   }
 
+  // --- Turnstile bot verification (skipped when secret is not configured) ---
+  // Only require verification for the first message of a new conversation.
+  // Once the user passes the challenge, subsequent messages in the same
+  // conversation are trusted (the token is single-use anyway).
   const conversationId =
     typeof body.conversationId === "string" ? body.conversationId : undefined;
+
+  if (env.TURNSTILE_SECRET_KEY && !conversationId) {
+    const cfToken = typeof body.cfTurnstileToken === "string" ? body.cfTurnstileToken : "";
+    if (!cfToken) {
+      return json({ error: "Bot verification token is missing." }, 403);
+    }
+    const ip = request.headers.get("CF-Connecting-IP");
+    let passed = false;
+    try {
+      passed = await verifyTurnstileToken(cfToken, env.TURNSTILE_SECRET_KEY, ip);
+    } catch (e) {
+      console.error("[philip] Turnstile verification fetch failed", e);
+    }
+    if (!passed) {
+      return json({ error: "Bot verification failed." }, 403);
+    }
+  }
+
   const userMessage =
     typeof body.message === "string" ? body.message.trim() : "";
 

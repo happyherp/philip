@@ -35,9 +35,59 @@ Local secrets live in `.dev.vars` (gitignored):
 ```
 OPENROUTER_API_KEY=sk-or-...
 OPENROUTER_MODEL=google/gemini-2.5-flash   # optional; any tool-calling model on OpenRouter
+TURNSTILE_SECRET_KEY=...                   # optional; enables Cloudflare Turnstile bot protection
 ```
 
 > The model **must support tool calling** (Philip uses a `get_passage` tool).
+
+## Bot Protection (Cloudflare Turnstile)
+
+Philip uses [Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/)
+to prevent scripted abuse of the `/api/chat` endpoint. Turnstile is free and
+usually invisible to real users.
+
+### Setup
+
+1. Go to the [Cloudflare dashboard](https://dash.cloudflare.com/) → **Turnstile** → **Add site**.
+2. Choose **Managed** mode (auto-decides whether to show a challenge).
+3. Copy the **Site Key** and **Secret Key**.
+
+**Frontend** — replace the placeholder site key in `public/index.html`:
+
+```html
+<div id="turnstile-widget" class="cf-turnstile"
+     data-sitekey="YOUR_SITE_KEY_HERE" ...>
+```
+
+**Backend (production)** — set the secret:
+
+```bash
+npx wrangler pages secret put TURNSTILE_SECRET_KEY
+```
+
+**Backend (local dev)** — add to `.dev.vars`:
+
+```
+TURNSTILE_SECRET_KEY=your-secret-key
+```
+
+### Testing keys
+
+Cloudflare provides test keys that always pass/fail without real challenges:
+
+| Purpose | Site Key | Secret Key |
+|---|---|---|
+| Always passes | `1x00000000000000000000AA` | `1x0000000000000000000000000000000AA` |
+| Always blocks | `2x00000000000000000000AB` | `2x0000000000000000000000000000000AB` |
+| Forces interactive | `3x00000000000000000000FF` | — |
+
+Use the "always passes" pair in `.dev.vars` + `index.html` for local development.
+
+### Skipping in dev
+
+If `TURNSTILE_SECRET_KEY` is **not set** in the environment, the server skips
+verification entirely. This means `npm run dev` works out of the box without
+any Turnstile configuration.
 
 ## Regenerate bundled assets (optional)
 
