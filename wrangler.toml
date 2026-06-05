@@ -4,7 +4,7 @@ pages_build_output_dir = "public"
 
 # Secrets (set locally in .dev.vars, in prod via `wrangler pages secret put`):
 #   OPENROUTER_API_KEY   required
-#   OPENROUTER_MODEL     optional (defaults to google/gemini-2.5-flash)
+#   OPENROUTER_MODEL     optional (defaults to anthropic/claude-sonnet-4)
 
 [[d1_databases]]
 binding = "DB"
