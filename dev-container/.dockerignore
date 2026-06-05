@@ -1,0 +1,5 @@
+# Build context is this dev-container/ dir; only docker-entrypoint.sh is copied into the
+# image. Keep the rest out of the build context.
+docker-compose.yml
+.dockerignore
+*.md

@@ -16,6 +16,18 @@ every quotation in the **bundled World English Bible** (`public/bible/web/*.json
 npm install
 ```
 
+## Develop in a Docker container (with Grok)
+
+Prefer to work in a container? A ready-to-use dev container with Node 22, the project
+tooling, and the **Grok CLI** (`grok-build`) preinstalled and authenticated lives in
+[`dev-container/`](dev-container/) — see [dev-container/README.md](dev-container/README.md).
+
+```bash
+cd dev-container
+docker compose build
+docker compose run --rm dev grok
+```
+
 ## Secrets
 
 Local secrets live in `.dev.vars` (gitignored):
