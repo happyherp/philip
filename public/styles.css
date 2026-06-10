@@ -100,6 +100,56 @@ body {
   border-radius: 0 8px 8px 0;
   font-style: italic;
 }
+/* Bible quotes resolved from {{quote …}} / {{q …}} markers. */
+.msg-body blockquote.quote-block {
+  font-style: normal;
+  padding: 10px 14px;
+}
+.quote-block .quote-ref {
+  display: block;
+  font-size: 0.78rem;
+  text-transform: lowercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-bottom: 0.35em;
+}
+.quote-block .quote-text {
+  display: block;
+  font-style: italic;
+}
+.quote-block .quote-attrib {
+  display: block;
+  margin-top: 0.4em;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+.quote-inline .quote-text { font-style: italic; }
+.quote-inline .quote-ref {
+  font-size: 0.85em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+/* Original-language scripts: a serif stack reads better; Hebrew runs rtl. */
+.quote-text[lang="grc"], .quote-text[lang="hbo"] {
+  font-family: "SBL Greek", "SBL Hebrew", Georgia, "Times New Roman", serif;
+}
+.quote-text[dir="rtl"] {
+  direction: rtl;
+  text-align: right;
+}
+.quote-pending {
+  color: var(--muted);
+  font-style: italic;
+  animation: quote-pulse 1.2s ease-in-out infinite;
+}
+@keyframes quote-pulse {
+  50% { opacity: 0.45; }
+}
+.quote-error {
+  color: var(--muted);
+  font-style: italic;
+}
+
 .msg-body code {
   background: #efeae0;
   padding: 0.1em 0.35em;
