@@ -94,8 +94,11 @@ any Turnstile configuration.
 These are committed, so you normally don't need to run them. To refresh:
 
 ```bash
-npm run build:bible      # downloads WEB and writes public/bible/web/*.json
-npm run vendor:marked    # pins the markdown renderer into public/frontend/vendor
+npm run build:bible            # downloads WEB and writes public/bible/web/*.json
+npm run build:bible:extra      # RV1909 (Spanish) + Luther 1545 (German)
+npm run build:bible:originals  # Tischendorf Greek NT, WLC Hebrew, LXX, Vulgate
+npm run gen:frontend           # regenerates public/frontend/bible-data.gen.js
+npm run vendor:marked          # pins the markdown renderer into public/frontend/vendor
 ```
 
 ## Run locally
