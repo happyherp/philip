@@ -77,7 +77,9 @@ export function streamChatResponse(opts: StreamChatOptions): StreamChatResult {
         onToken: (t) => send({ token: t }),
         onTranslationUsed: (tid) => {
           const meta = translationById(tid);
-          send({ lang: meta.lang });
+          // Scholarly texts (Greek/Hebrew/Latin) are not UI languages — a word
+          // study must not flip the frontend i18n.
+          if (meta && !meta.scholarly) send({ lang: meta.lang });
         },
       });
       if (opts.onAssistantFinal) {

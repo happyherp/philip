@@ -80,6 +80,13 @@ export const BOOKS: BookMeta[] = [
   { name: "Revelation", file: "revelation", aliases: ["rev", "rv", "apocalypse", "apocalipsis", "ap", "apoc", "offenbarung", "offb", "off", "apk"] },
 ];
 
+/** Books before Matthew (index 39) are the Old Testament. */
+const OT_BOOK_COUNT = 39;
+
+export function isOldTestament(book: BookMeta): boolean {
+  return BOOKS.indexOf(book) < OT_BOOK_COUNT;
+}
+
 /** Normalize a book token for matching: lowercase, strip periods, collapse spaces. */
 export function normalizeBookKey(raw: string): string {
   return raw

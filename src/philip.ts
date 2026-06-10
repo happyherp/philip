@@ -5,6 +5,14 @@
 // The prompt is inlined as a template literal because Cloudflare Pages does not
 // support wrangler [[rules]] for text-module imports.
 
+import { TRANSLATIONS } from "./translations.ts";
+
+const TRANSLATION_LINES = TRANSLATIONS.map((t) => {
+  const part =
+    t.coverage === "full" ? "" : t.coverage === "nt" ? ", New Testament only" : ", Old Testament only";
+  return `"${t.id}" = ${t.fullName}${part}`;
+}).join("; ");
+
 export const GET_PASSAGE_TOOL = {
   type: "function" as const,
   function: {
@@ -24,13 +32,11 @@ export const GET_PASSAGE_TOOL = {
         },
         translation: {
           type: "string",
-          enum: ["web", "rv1909", "luther1545"],
+          enum: TRANSLATIONS.map((t) => t.id),
           description:
-            "Which Bible translation to use. " +
-            '"web" = World English Bible (English), ' +
-            '"rv1909" = Reina-Valera 1909 (Spanish), ' +
-            '"luther1545" = Luther 1545 (German). ' +
-            "Choose the translation that matches the language you are speaking to the reader in. " +
+            `Which Bible text to use: ${TRANSLATION_LINES}. ` +
+            "For reading, choose the translation that matches the language you are speaking to the reader in. " +
+            "Use tisch/wlc/lxx/vul only for original-language study (word studies, comparing renderings). " +
             "Defaults to the reader's initial language if omitted.",
         },
       },

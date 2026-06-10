@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { sanitizeHistory, streamChatResponse } from "../../src/chat.ts";
-import { DONE, contentEvent, fetchSequence, fileAssetFetch, sseResponse } from "../helpers.ts";
+import { DONE, contentEvent, fetchSequence, fileAssetFetch, sseResponse, toolEvent } from "../helpers.ts";
 
 async function readSSE(res: Response): Promise<string> {
   return await res.text();
@@ -48,6 +48,54 @@ describe("streamChatResponse", () => {
     expect(body).toContain('data: {"token":"Peace "}');
     expect(body).toContain('data: {"token":"be with you."}');
     expect(body).toContain('data: {"done":true}');
+  });
+
+  it("emits a lang event for reader translations but not scholarly ones", async () => {
+    const passageCall = (translation: string) =>
+      sseResponse([
+        toolEvent(0, {
+          id: "call1",
+          name: "get_passage",
+          arguments: JSON.stringify({ reference: "John 1:1", translation }),
+        }),
+        DONE,
+      ]);
+
+    // Greek word study: no lang event.
+    {
+      const { fetchImpl } = fetchSequence([
+        passageCall("tisch"),
+        sseResponse([contentEvent("done"), DONE]),
+      ]);
+      const { response, pump } = streamChatResponse({
+        history: [{ role: "user", content: "hi" }],
+        apiKey: "test",
+        model: "test/model",
+        fetchImpl,
+        assetFetch: fileAssetFetch(),
+      });
+      const body = await readSSE(response);
+      await pump;
+      expect(body).not.toContain('"lang"');
+    }
+
+    // Spanish reading: lang event fires.
+    {
+      const { fetchImpl } = fetchSequence([
+        passageCall("rv1909"),
+        sseResponse([contentEvent("hecho"), DONE]),
+      ]);
+      const { response, pump } = streamChatResponse({
+        history: [{ role: "user", content: "hola" }],
+        apiKey: "test",
+        model: "test/model",
+        fetchImpl,
+        assetFetch: fileAssetFetch(),
+      });
+      const body = await readSSE(response);
+      await pump;
+      expect(body).toContain('data: {"lang":"es"}');
+    }
   });
 
   it("emits an error event when history is empty", async () => {

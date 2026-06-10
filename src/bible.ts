@@ -3,7 +3,8 @@
 // identically in the Cloudflare Worker (env.ASSETS), in Node tests (a stub),
 // and in a future WhatsApp webhook.
 
-import { type BookMeta, buildBookIndex, normalizeBookKey } from "./books.ts";
+import { type BookMeta, buildBookIndex, isOldTestament, normalizeBookKey } from "./books.ts";
+import { TRANSLATIONS, translationById, translationCoversBook } from "./translations.ts";
 
 const BOOK_INDEX = buildBookIndex();
 
@@ -123,6 +124,21 @@ export async function getPassage(
   const ref = parseReference(reference);
   if (!ref) {
     return { error: `Could not parse reference "${reference}". Use a form like "John 8:31-32".` };
+  }
+
+  const translation = translationById(translationId);
+  if (!translation) {
+    const ids = TRANSLATIONS.map((t) => t.id).join(", ");
+    return { error: `Unknown translation "${translationId}". Available: ${ids}.` };
+  }
+  if (!translationCoversBook(translation, ref.book)) {
+    const wanted = isOldTestament(ref.book)
+      ? "Use wlc (Hebrew) or lxx (Greek Septuagint) for Old Testament books."
+      : "Use tisch (Greek) for New Testament books.";
+    const covers = translation.coverage === "nt" ? "New Testament" : "Old Testament";
+    return {
+      error: `${translation.name} does not contain ${ref.book.name} — it covers the ${covers} only. ${wanted}`,
+    };
   }
 
   const res = await assetFetch(`/bible/${translationId}/${ref.book.file}.json`);
