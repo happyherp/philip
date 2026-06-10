@@ -232,8 +232,8 @@ let turnstileToken = null;
 let turnstileActive = false;
 const turnstileWidgetEl = document.getElementById("turnstile-widget");
 
-// Disable send until Turnstile verifies — or until the timeout fires.
-setBusy(true);
+// Turnstile disabled — do not lock the UI.
+// setBusy(true);
 const turnstileTimeout = setTimeout(() => {
   if (!turnstileActive) {
     // Turnstile never completed — unlock the UI and hide the widget.

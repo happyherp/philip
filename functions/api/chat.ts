@@ -25,7 +25,7 @@ interface Env {
   TURNSTILE_SECRET_KEY?: string;
 }
 
-const DEFAULT_MODEL = "google/gemini-2.5-flash";
+const DEFAULT_MODEL = "anthropic/claude-sonnet-4";
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
   const { request, env } = context;
@@ -54,22 +54,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   const conversationId =
     typeof body.conversationId === "string" ? body.conversationId : undefined;
 
-  if (env.TURNSTILE_SECRET_KEY && !conversationId) {
-    const cfToken = typeof body.cfTurnstileToken === "string" ? body.cfTurnstileToken : "";
-    if (!cfToken) {
-      return json({ error: "Bot verification token is missing." }, 403);
-    }
-    const ip = request.headers.get("CF-Connecting-IP");
-    let passed = false;
-    try {
-      passed = await verifyTurnstileToken(cfToken, env.TURNSTILE_SECRET_KEY, ip);
-    } catch (e) {
-      console.error("[philip] Turnstile verification fetch failed", e);
-    }
-    if (!passed) {
-      return json({ error: "Bot verification failed." }, 403);
-    }
-  }
+  // Turnstile disabled — re-enable once the widget issue is resolved.
+  // if (env.TURNSTILE_SECRET_KEY && !conversationId) { ... }
 
   const userMessage =
     typeof body.message === "string" ? body.message.trim() : "";
