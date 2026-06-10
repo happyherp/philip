@@ -4,8 +4,8 @@ import { renderMarkdownInto } from "./frontend/render.js";
 import { streamChat } from "./frontend/chat-client.js";
 import { detectLang, getStrings } from "./i18n.js";
 
-const lang = detectLang();
-const t = getStrings(lang);
+let lang = detectLang();
+let t = getStrings(lang);
 
 const state = createState();
 
@@ -78,12 +78,23 @@ if (micBtn && !SpeechRecognition) {
 }
 
 // Apply i18n to static UI elements.
-document.title = t.title;
-document.documentElement.lang = lang;
-document.querySelector(".tagline").textContent = t.tagline;
-input.placeholder = t.placeholder;
-sendBtn.textContent = t.send;
-document.getElementById("new-chat").textContent = t.new_chat;
+function applyI18n() {
+  document.title = t.title;
+  document.documentElement.lang = lang;
+  document.querySelector(".tagline").textContent = t.tagline;
+  input.placeholder = t.placeholder;
+  sendBtn.textContent = t.send;
+  document.getElementById("new-chat").textContent = t.new_chat;
+}
+applyI18n();
+
+/** Switch the UI language if the model starts speaking a different language. */
+function switchLang(newLang) {
+  if (newLang === lang) return;
+  lang = newLang;
+  t = getStrings(lang);
+  applyI18n();
+}
 
 // Update the static welcome message if the language differs from the default English.
 if (lang !== "en") {
@@ -172,6 +183,7 @@ async function send(text) {
         history.replaceState(null, "", url.toString());
       }
     },
+    onLang: (newLang) => switchLang(newLang),
     onToken: (token) => {
       bubble.classList.remove("thinking");
       appendToken(state, token);
