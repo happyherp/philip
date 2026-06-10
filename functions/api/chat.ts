@@ -25,7 +25,7 @@ interface Env {
   TURNSTILE_SECRET_KEY?: string;
 }
 
-const DEFAULT_MODEL = "anthropic/claude-sonnet-4";
+const DEFAULT_MODEL = "x-ai/grok-4.20";
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
   const { request, env } = context;
