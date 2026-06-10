@@ -7,7 +7,9 @@
   "scripts": {
     "build:bible": "tsx scripts/build-bible.ts",
     "build:bible:extra": "tsx scripts/build-bible-extra.ts",
-    "build:bible:all": "npm run build:bible && npm run build:bible:extra",
+    "build:bible:originals": "tsx scripts/build-bible-originals.ts",
+    "build:bible:all": "npm run build:bible && npm run build:bible:extra && npm run build:bible:originals",
+    "gen:frontend": "tsx scripts/gen-frontend-data.ts",
     "vendor:marked": "tsx scripts/vendor-marked.ts",
     "dev": "wrangler pages dev public",
     "deploy": "wrangler pages deploy public",
