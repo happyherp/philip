@@ -13,6 +13,7 @@
  * @param {string} [opts.cfTurnstileToken] - Cloudflare Turnstile token for bot verification
  * @param {(token: string) => void} opts.onToken
  * @param {(id: string) => void} [opts.onConversationId] - called if server returns X-Conversation-Id (new convos)
+ * @param {(lang: string) => void} [opts.onLang] - called when the model chooses a language/translation
  * @param {() => void} [opts.onDone]
  * @param {(message: string) => void} [opts.onError]
  * @param {typeof fetch} [opts.fetchImpl]
@@ -26,6 +27,7 @@ export async function streamChat({
   cfTurnstileToken,
   onToken,
   onConversationId,
+  onLang,
   onDone,
   onError,
   fetchImpl = fetch,
@@ -88,6 +90,7 @@ export async function streamChat({
         continue;
       }
       if (typeof evt.token === "string") onToken(evt.token);
+      else if (typeof evt.lang === "string") onLang?.(evt.lang);
       else if (evt.error) {
         finished = true;
         onError?.(evt.error);

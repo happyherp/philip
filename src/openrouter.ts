@@ -37,8 +37,10 @@ export interface RunChatDeps {
   title?: string;
   /** Override the system prompt (for language-specific variants). */
   systemPrompt?: string;
-  /** Which bundled translation to use (e.g. "web", "rv1909", "luther1545"). */
+  /** Default translation id when the model doesn't specify one (e.g. "web", "rv1909", "luther1545"). */
   translationId?: string;
+  /** Called each time the model uses a translation (via get_passage), so the caller can update UI language. */
+  onTranslationUsed?: (translationId: string) => void | Promise<void>;
 }
 
 /**
@@ -98,12 +100,15 @@ export async function runChat(history: ChatMessage[], deps: RunChatDeps): Promis
       // and loop so it can compose the answer around verified text.
       messages.push({ role: "assistant", content: turn.content || null, tool_calls: turn.toolCalls });
       for (const call of turn.toolCalls) {
-        const result = await executeToolCall(call, deps.assetFetch, deps.translationId ?? "web");
+        const { text, translationUsed } = await executeToolCall(call, deps.assetFetch, deps.translationId ?? "web");
+        if (translationUsed && deps.onTranslationUsed) {
+          await deps.onTranslationUsed(translationUsed);
+        }
         messages.push({
           role: "tool",
           tool_call_id: call.id,
           name: call.function.name,
-          content: result,
+          content: text,
         });
       }
       continue;
@@ -116,18 +121,37 @@ export async function runChat(history: ChatMessage[], deps: RunChatDeps): Promis
   throw new Error(`Exceeded ${maxIterations} tool-call iterations without a final answer.`);
 }
 
-async function executeToolCall(call: ToolCall, assetFetch: AssetFetch, translationId = "web"): Promise<string> {
+interface ToolCallResult {
+  text: string;
+  /** The translation id that was actually used (model-chosen or fallback). */
+  translationUsed?: string;
+}
+
+async function executeToolCall(
+  call: ToolCall,
+  assetFetch: AssetFetch,
+  defaultTranslationId = "web",
+): Promise<ToolCallResult> {
   if (call.function.name !== "get_passage") {
-    return JSON.stringify({ error: `Unknown tool: ${call.function.name}` });
+    return { text: JSON.stringify({ error: `Unknown tool: ${call.function.name}` }) };
   }
   let reference = "";
+  let translationId = defaultTranslationId;
   try {
-    reference = (JSON.parse(call.function.arguments || "{}") as { reference?: string }).reference ?? "";
+    const args = JSON.parse(call.function.arguments || "{}") as {
+      reference?: string;
+      translation?: string;
+    };
+    reference = args.reference ?? "";
+    if (args.translation) translationId = args.translation;
   } catch {
-    return JSON.stringify({ error: "Invalid tool arguments JSON." });
+    return { text: JSON.stringify({ error: "Invalid tool arguments JSON." }) };
   }
   const result = await getPassage(reference, assetFetch, translationId);
-  return "error" in result ? JSON.stringify(result) : passageToText(result);
+  return {
+    text: "error" in result ? JSON.stringify(result) : passageToText(result),
+    translationUsed: translationId,
+  };
 }
 
 interface StreamTurn {

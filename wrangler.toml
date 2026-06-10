@@ -11,10 +11,6 @@ binding = "DB"
 database_name = "philip-db"
 database_id = "3bb5a0d6-7136-4c54-a3a0-aa74c4f23df0"
 
-[[rules]]
-type = "Text"
-globs = ["src/prompts/*.md"]
-
 # Preview deployments (every non-main branch / PR) use an isolated database so PR
 # testing never touches production conversation data. Only D1 is configured at the
 # top level, so only D1 needs to be redeclared here (non-inheritable keys rule).

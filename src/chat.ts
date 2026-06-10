@@ -5,7 +5,7 @@
 import { type AssetFetch } from "./bible.ts";
 import { type ChatMessage, runChat } from "./openrouter.ts";
 import { buildSystemPrompt } from "./philip.ts";
-import { translationForLang } from "./translations.ts";
+import { translationById, translationForLang } from "./translations.ts";
 
 export interface StreamChatOptions {
   /** Raw conversation from the client (only role/content trusted). */
@@ -75,6 +75,10 @@ export function streamChatResponse(opts: StreamChatOptions): StreamChatResult {
         systemPrompt: buildSystemPrompt(lang),
         translationId: translation.id,
         onToken: (t) => send({ token: t }),
+        onTranslationUsed: (tid) => {
+          const meta = translationById(tid);
+          send({ lang: meta.lang });
+        },
       });
       if (opts.onAssistantFinal) {
         await opts.onAssistantFinal(finalText);
