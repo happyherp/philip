@@ -170,6 +170,34 @@ function collectVerses(json, ref) {
   return verses;
 }
 
+// --- "Read in context" portal links ---
+
+/**
+ * Build the external portal URL for a reference in a given translation, or
+ * null when the translation has no configured portal.
+ */
+export function portalUrl(meta, ref) {
+  if (!meta.link) return null;
+  if (meta.link.portal === "biblegateway") {
+    // BibleGateway takes the human reference nearly verbatim: "John 8:31-32".
+    const search = displayReference(ref).replace(/–/g, "-");
+    return `https://www.biblegateway.com/passage/?search=${encodeURIComponent(search)}&version=${meta.link.version}`;
+  }
+  if (meta.link.portal === "step") {
+    // STEP wants dotted references with space-free book names: "1John.1.9",
+    // "John.8.31-32".
+    let r = `${ref.book.name.replace(/ /g, "")}.${ref.startChapter}`;
+    if (ref.startVerse != null) r += `.${ref.startVerse}`;
+    if (ref.endChapter !== ref.startChapter) {
+      r += `-${ref.endChapter}` + (ref.endVerse != null ? `.${ref.endVerse}` : "");
+    } else if (ref.endVerse != null && ref.endVerse !== ref.startVerse) {
+      r += `-${ref.endVerse}`;
+    }
+    return `https://www.stepbible.org/?q=version=${meta.link.version}%7Creference=${encodeURIComponent(r)}`;
+  }
+  return null;
+}
+
 // --- Element building ---
 
 function errorSpan(text) {
@@ -185,13 +213,24 @@ function applyTextAttrs(el, meta) {
   if (meta.dir) el.setAttribute("dir", meta.dir);
 }
 
-function fillBlock(el, verses, refLabel, meta) {
+/** The reference becomes a link to the portal when one is configured. */
+function refElement(textContent, url) {
+  const el = document.createElement(url ? "a" : "span");
+  el.className = "quote-ref";
+  el.textContent = textContent;
+  if (url) {
+    el.setAttribute("href", url);
+    el.setAttribute("target", "_blank");
+    el.setAttribute("rel", "noopener noreferrer");
+  }
+  return el;
+}
+
+function fillBlock(el, verses, refLabel, meta, url) {
   el.textContent = "";
   el.classList.remove("quote-pending");
 
-  const ref = document.createElement("span");
-  ref.className = "quote-ref";
-  ref.textContent = refLabel;
+  const ref = refElement(refLabel, url);
 
   const text = document.createElement("span");
   text.className = "quote-text";
@@ -205,7 +244,7 @@ function fillBlock(el, verses, refLabel, meta) {
   el.append(ref, text, attrib);
 }
 
-function fillInline(el, verses, refLabel, meta) {
+function fillInline(el, verses, refLabel, meta, url) {
   el.textContent = "";
   el.classList.remove("quote-pending");
 
@@ -214,11 +253,9 @@ function fillInline(el, verses, refLabel, meta) {
   text.textContent = `“${verses.join(" ")}”`;
   applyTextAttrs(text, meta);
 
-  const ref = document.createElement("span");
-  ref.className = "quote-ref";
-  ref.textContent = ` (${refLabel}, ${meta.name})`;
-
-  el.append(text, ref);
+  el.append(text, document.createTextNode(" ("));
+  el.appendChild(refElement(`${refLabel}, ${meta.name}`, url));
+  el.appendChild(document.createTextNode(")"));
 }
 
 /**
@@ -247,13 +284,14 @@ export function buildQuoteElement(marker, defaultTranslationId, fetchImpl) {
   el.className = marker.mode === "block" ? "quote-block" : "quote-inline";
   const fill = marker.mode === "block" ? fillBlock : fillInline;
 
+  const url = portalUrl(meta, ref);
   const finish = (json) => {
     const verses = collectVerses(json, ref);
     if (verses.length === 0 || verses.length > MAX_VERSES) {
       el.replaceWith(errorSpan(`${refLabel} (${meta.name})`));
       return;
     }
-    fill(el, verses, refLabel, meta);
+    fill(el, verses, refLabel, meta, url);
   };
 
   const key = `${meta.id}/${ref.book.file}`;

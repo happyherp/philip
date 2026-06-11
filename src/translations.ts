@@ -14,16 +14,22 @@ export interface TranslationMeta {
   dir?: "rtl";
   /** Original-language/study texts: never picked as a reader-language default. */
   scholarly?: boolean;
+  /**
+   * "Read in context" portal for quote links. BibleGateway where it carries
+   * the text (the portal most readers know); STEP Bible for the scholarly
+   * texts it alone has exactly (Tischendorf, LXX).
+   */
+  link?: { portal: "biblegateway" | "step"; version: string };
 }
 
 export const TRANSLATIONS: TranslationMeta[] = [
-  { id: "web", name: "WEB", fullName: "World English Bible", lang: "en", coverage: "full" },
-  { id: "rv1909", name: "RV1909", fullName: "Reina-Valera 1909", lang: "es", coverage: "full" },
-  { id: "luther1545", name: "Luther 1545", fullName: "Luther Bibel 1545", lang: "de", coverage: "full" },
-  { id: "tisch", name: "Tischendorf", fullName: "Tischendorf 8th Edition (Greek New Testament)", lang: "grc", coverage: "nt", scholarly: true },
-  { id: "wlc", name: "WLC", fullName: "Westminster Leningrad Codex (Hebrew Old Testament)", lang: "hbo", coverage: "ot", dir: "rtl", scholarly: true },
-  { id: "lxx", name: "LXX", fullName: "Septuagint (Greek Old Testament)", lang: "grc", coverage: "ot", scholarly: true },
-  { id: "vul", name: "Vulgata", fullName: "Clementine Vulgate (Latin)", lang: "la", coverage: "full", scholarly: true },
+  { id: "web", name: "WEB", fullName: "World English Bible", lang: "en", coverage: "full", link: { portal: "biblegateway", version: "WEB" } },
+  { id: "rv1909", name: "RV1909", fullName: "Reina-Valera 1909", lang: "es", coverage: "full", link: { portal: "biblegateway", version: "RVA" } },
+  { id: "luther1545", name: "Luther 1545", fullName: "Luther Bibel 1545", lang: "de", coverage: "full", link: { portal: "biblegateway", version: "LUTH1545" } },
+  { id: "tisch", name: "Tischendorf", fullName: "Tischendorf 8th Edition (Greek New Testament)", lang: "grc", coverage: "nt", scholarly: true, link: { portal: "step", version: "Tisch" } },
+  { id: "wlc", name: "WLC", fullName: "Westminster Leningrad Codex (Hebrew Old Testament)", lang: "hbo", coverage: "ot", dir: "rtl", scholarly: true, link: { portal: "biblegateway", version: "WLC" } },
+  { id: "lxx", name: "LXX", fullName: "Septuagint (Greek Old Testament)", lang: "grc", coverage: "ot", scholarly: true, link: { portal: "step", version: "LXX" } },
+  { id: "vul", name: "Vulgata", fullName: "Clementine Vulgate (Latin)", lang: "la", coverage: "full", scholarly: true, link: { portal: "biblegateway", version: "VULGATE" } },
 ];
 
 const BY_LANG = new Map(

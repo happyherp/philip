@@ -5,9 +5,11 @@ import {
   displayReference,
   findMarkers,
   parseReference,
+  portalUrl,
   stripIncompleteTrailingMarker,
   translationForLang,
 } from "../../../public/frontend/quotes.js";
+import { TRANSLATIONS } from "../../../public/frontend/bible-data.gen.js";
 import { renderMessageInto } from "../../../public/frontend/render.js";
 
 const JOHN_WEB = {
@@ -118,7 +120,8 @@ describe("buildQuoteElement", () => {
     const second = buildQuoteElement(marker, "web", impl);
     expect(second.classList.contains("quote-pending")).toBe(false);
     expect(second.querySelector(".quote-text").textContent).toContain("You will know the truth");
-    expect(second.querySelector(".quote-ref").textContent).toBe(" (John 8:32, WEB)");
+    expect(second.querySelector(".quote-ref").textContent).toBe("John 8:32, WEB");
+    expect(second.textContent).toContain("(John 8:32, WEB)");
     expect(calls).toHaveLength(1);
   });
 
@@ -170,6 +173,49 @@ describe("buildQuoteElement", () => {
     await flush();
     expect(el.querySelector("img")).toBeNull();
     expect(el.textContent).toContain("<img");
+  });
+});
+
+describe("portal links", () => {
+  const byId = new Map(TRANSLATIONS.map((t) => [t.id, t]));
+
+  it("builds BibleGateway URLs from the human reference", () => {
+    const url = portalUrl(byId.get("web"), parseReference("John 8:31-32"));
+    expect(url).toBe(
+      "https://www.biblegateway.com/passage/?search=John%208%3A31-32&version=WEB",
+    );
+    expect(portalUrl(byId.get("wlc"), parseReference("Genesis 1:1"))).toContain("version=WLC");
+  });
+
+  it("builds dotted STEP references with space-free book names", () => {
+    expect(portalUrl(byId.get("tisch"), parseReference("John 8:31-32"))).toBe(
+      "https://www.stepbible.org/?q=version=Tisch%7Creference=John.8.31-32",
+    );
+    expect(portalUrl(byId.get("tisch"), parseReference("1 John 1:9"))).toContain(
+      "reference=1John.1.9",
+    );
+    expect(portalUrl(byId.get("lxx"), parseReference("Psalm 23"))).toContain(
+      "reference=Psalms.23",
+    );
+  });
+
+  it("links the reference in both quote modes, opening in a new tab", async () => {
+    const { impl } = fetchStub({ "/bible/web/john.json": JOHN_WEB });
+    const [block] = findMarkers("{{quote John 8:31-32 @web}}");
+    const el = buildQuoteElement(block, "web", impl);
+    document.body.appendChild(el);
+    await flush();
+
+    const a = el.querySelector("a.quote-ref");
+    expect(a.getAttribute("href")).toContain("biblegateway.com");
+    expect(a.getAttribute("target")).toBe("_blank");
+    expect(a.getAttribute("rel")).toBe("noopener noreferrer");
+
+    const [inline] = findMarkers("{{q John 8:31 @web}}");
+    const inlineEl = buildQuoteElement(inline, "web", impl);
+    expect(inlineEl.querySelector("a.quote-ref").getAttribute("href")).toContain(
+      "search=John%208%3A31&version=WEB",
+    );
   });
 });
 

@@ -173,6 +173,13 @@ body {
   direction: rtl;
   text-align: right;
 }
+/* Reference links out to a portal (BibleGateway / STEP) for reading in context. */
+a.quote-ref {
+  color: inherit;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+a.quote-ref:hover { color: var(--accent); }
 .quote-pending {
   color: var(--muted);
   font-style: italic;
