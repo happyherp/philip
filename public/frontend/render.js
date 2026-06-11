@@ -1,5 +1,11 @@
 // Markdown rendering + a small DOM sanitizer. Pure enough to test in jsdom.
 import { marked } from "./vendor/marked.esm.js";
+import {
+  buildQuoteElement,
+  findMarkers,
+  stripIncompleteTrailingMarker,
+  translationForLang,
+} from "./quotes.js";
 
 marked.setOptions({ breaks: true, gfm: true });
 
@@ -59,4 +65,70 @@ export function renderMarkdown(md) {
 /** Set an element's content from markdown. */
 export function renderMarkdownInto(el, md) {
   el.innerHTML = renderMarkdown(md);
+}
+
+// Bible-quote markers are swapped for private-use-area sentinels before the
+// markdown pass (they survive marked and the sanitizer as plain text), then
+// the sentinels are replaced with the real quote elements in the DOM.
+const SENTINEL = "\uE000";
+const SENTINEL_RE = /\uE000(\d+)\uE000/;
+
+/**
+ * Render a chat message: markdown plus {{quote …}}/{{q …}} bible-quote
+ * markers. A marker still streaming in (unclosed "{{…" at the end) is hidden
+ * until complete. `opts.lang` selects the default translation for markers
+ * without an explicit @id.
+ */
+export function renderMessageInto(el, md, opts = {}) {
+  const text = stripIncompleteTrailingMarker(md ?? "");
+  const markers = findMarkers(text);
+
+  let withSentinels = "";
+  let pos = 0;
+  markers.forEach((m, i) => {
+    withSentinels += text.slice(pos, m.start) + SENTINEL + i + SENTINEL;
+    pos = m.end;
+  });
+  withSentinels += text.slice(pos);
+
+  el.innerHTML = renderMarkdown(withSentinels);
+  if (markers.length === 0) return;
+
+  const defaultTranslationId = translationForLang(opts.lang ?? "en").id;
+  replaceSentinels(el, (i) => buildQuoteElement(markers[i], defaultTranslationId, opts.fetchImpl));
+  hoistBlockQuotes(el);
+}
+
+/** Replace every sentinel in the element's text nodes with its quote element. */
+function replaceSentinels(root, build) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const textNodes = [];
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (SENTINEL_RE.test(n.nodeValue)) textNodes.push(n);
+  }
+  for (const node of textNodes) {
+    const frag = document.createDocumentFragment();
+    let rest = node.nodeValue;
+    let m;
+    while ((m = rest.match(SENTINEL_RE))) {
+      if (m.index > 0) frag.appendChild(document.createTextNode(rest.slice(0, m.index)));
+      frag.appendChild(build(Number(m[1])));
+      rest = rest.slice(m.index + m[0].length);
+    }
+    if (rest) frag.appendChild(document.createTextNode(rest));
+    node.replaceWith(frag);
+  }
+}
+
+/** A block quote that is a paragraph's only content replaces the paragraph. */
+function hoistBlockQuotes(root) {
+  for (const bq of root.querySelectorAll("blockquote.quote-block")) {
+    const p = bq.parentElement;
+    if (!p || p.tagName !== "P" || p.parentElement == null) continue;
+    const others = Array.from(p.childNodes).filter((n) => n !== bq);
+    const hasOtherContent = others.some((n) =>
+      n.nodeType === 3 ? n.nodeValue.trim() !== "" : n.tagName !== "BR",
+    );
+    if (!hasOtherContent) p.replaceWith(bq);
+  }
 }

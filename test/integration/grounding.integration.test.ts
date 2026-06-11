@@ -52,5 +52,10 @@ describe.skipIf(!ENABLED)("grounding (live)", () => {
     expect(answer.length).toBeGreaterThan(40);
     // Model's response should reference the core concept, even if paraphrased.
     expect(answer.toLowerCase()).toMatch(/remain|disciple|word|truth|free/);
+
+    // New grounding contract: scripture is displayed via a quote marker…
+    expect(answer).toMatch(/\{\{(quote|q)\s+John 8:[\d:–-]+\s*(@[a-z0-9]+)?\s*\}\}/);
+    // …and the model does not retype the verse text itself.
+    expect(answer).not.toContain("If you remain in my word");
   }, 90_000);
 });

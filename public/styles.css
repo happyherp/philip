@@ -100,6 +100,99 @@ body {
   border-radius: 0 8px 8px 0;
   font-style: italic;
 }
+/* Bible quotes resolved from {{quote …}} / {{q …}} markers. */
+.msg-body blockquote.quote-block {
+  font-style: normal;
+  padding: 10px 14px;
+}
+.quote-block .quote-ref {
+  display: block;
+  font-size: 0.78rem;
+  text-transform: lowercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-bottom: 0.35em;
+}
+.quote-block .quote-text {
+  display: block;
+  font-style: italic;
+}
+.quote-block .quote-attrib {
+  display: block;
+  margin-top: 0.4em;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+/* Inline quotes read as a soft highlighted chip, clearly set off from prose. */
+.quote-inline {
+  background: var(--accent-soft);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.05em 0.4em;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.quote-inline .quote-text { font-style: italic; }
+.quote-inline .quote-ref {
+  font-size: 0.85em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+/* Each translation speaks in its own typeface — a little flair that also
+   makes quoted scripture instantly recognizable. Falls back to the body
+   serif when the webfont hasn't loaded. */
+.quote-text[data-translation="web"] {
+  font-family: "Lora", Georgia, serif;
+}
+.quote-text[data-translation="rv1909"] {
+  font-family: "Cormorant Garamond", Georgia, serif;
+  font-size: 1.08em;
+}
+.quote-text[data-translation="luther1545"] {
+  font-family: "UnifrakturMaguntia", Georgia, serif;
+  font-style: normal; /* fraktur has no italic */
+}
+.quote-text[data-translation="tisch"] {
+  font-family: "EB Garamond", Georgia, serif;
+  font-size: 1.06em;
+  font-style: normal; /* polytonic Greek reads better upright */
+}
+.quote-text[data-translation="lxx"] {
+  font-family: "Gentium Book Plus", Georgia, serif;
+  font-style: normal;
+}
+.quote-text[data-translation="wlc"] {
+  font-family: "David Libre", "SBL Hebrew", Georgia, serif;
+  font-style: normal; /* italic Hebrew is a typographic error */
+  font-size: 1.06em;
+}
+.quote-text[data-translation="vul"] {
+  font-family: "Cardo", Georgia, serif;
+}
+.quote-text[dir="rtl"] {
+  direction: rtl;
+  text-align: right;
+}
+/* Reference links out to a portal (BibleGateway / STEP) for reading in context. */
+a.quote-ref {
+  color: inherit;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+a.quote-ref:hover { color: var(--accent); }
+.quote-pending {
+  color: var(--muted);
+  font-style: italic;
+  animation: quote-pulse 1.2s ease-in-out infinite;
+}
+@keyframes quote-pulse {
+  50% { opacity: 0.45; }
+}
+.quote-error {
+  color: var(--muted);
+  font-style: italic;
+}
+
 .msg-body code {
   background: #efeae0;
   padding: 0.1em 0.35em;

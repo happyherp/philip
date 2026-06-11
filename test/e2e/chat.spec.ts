@@ -40,4 +40,30 @@ test.describe("text chat", () => {
     await expect(page.locator("#input")).toBeEnabled();
     await expect(page.locator("#send")).toBeEnabled();
   });
+
+  test("a streamed {{quote}} marker renders as a formatted bible quote", async ({
+    page,
+  }) => {
+    await mockChatStream(page, [
+      "{{quote John ",
+      "8:31-32 @web}}",
+      "\n\nNotice the chain: remain → know → free.",
+    ]);
+    await page.goto("/");
+
+    await page.locator("#input").fill("Let's read John 8");
+    await page.locator("#send").click();
+
+    const bubble = page.locator(".msg-assistant .msg-body").last();
+    // Verse text is fetched from the bundled /bible/ JSON, not the stream.
+    const quote = bubble.locator("blockquote.quote-block");
+    await expect(quote.locator(".quote-ref")).toHaveText("John 8:31–32");
+    await expect(quote.locator(".quote-text")).toContainText(
+      "the truth will make you free",
+    );
+    await expect(quote.locator(".quote-attrib")).toHaveText("— WEB");
+    await expect(bubble).toContainText("Notice the chain");
+    // The raw marker never shows.
+    await expect(bubble).not.toContainText("{{");
+  });
 });

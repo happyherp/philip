@@ -1,6 +1,6 @@
 // Wires the DOM to the conversation state, renderer, and SSE client.
 import { addMessage, appendToken, createState } from "./frontend/state.js";
-import { renderMarkdownInto } from "./frontend/render.js";
+import { renderMessageInto } from "./frontend/render.js";
 import { streamChat } from "./frontend/chat-client.js";
 import { detectLang, getStrings } from "./i18n.js";
 
@@ -115,7 +115,7 @@ function addBubble(role, markdown) {
   wrap.className = `msg msg-${role}`;
   const body = document.createElement("div");
   body.className = "msg-body";
-  renderMarkdownInto(body, markdown);
+  renderMessageInto(body, markdown, { lang });
   wrap.appendChild(body);
   log.appendChild(wrap);
   log.scrollTop = log.scrollHeight;
@@ -187,7 +187,7 @@ async function send(text) {
     onToken: (token) => {
       bubble.classList.remove("thinking");
       appendToken(state, token);
-      renderMarkdownInto(bubble, assistant.content);
+      renderMessageInto(bubble, assistant.content, { lang });
       log.scrollTop = log.scrollHeight;
     },
     onError: (message) => {

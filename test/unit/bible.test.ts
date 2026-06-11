@@ -108,6 +108,38 @@ describe("getPassage (against bundled WEB)", () => {
     expect("error" in p).toBe(true);
   });
 
+  it("fetches scholarly texts by translation id", async () => {
+    const greek = await getPassage("John 1:1", assets, "tisch");
+    if (!("verses" in greek)) throw new Error("expected verses");
+    expect(greek.translation).toBe("Tischendorf");
+    expect(greek.verses[0].text).toContain("λόγος");
+
+    const hebrew = await getPassage("Genesis 1:1", assets, "wlc");
+    if (!("verses" in hebrew)) throw new Error("expected verses");
+    expect(hebrew.verses[0].text).toContain("בָּרָ֣א");
+  });
+
+  it("rejects an unknown translation id with the list of valid ids", async () => {
+    const p = await getPassage("John 1:1", assets, "kjv");
+    if (!("error" in p)) throw new Error("expected error");
+    expect(p.error).toContain('Unknown translation "kjv"');
+    expect(p.error).toContain("web");
+    expect(p.error).toContain("tisch");
+  });
+
+  it("explains coverage and suggests an alternative for uncovered books", async () => {
+    const otInGreekNt = await getPassage("Genesis 1:1", assets, "tisch");
+    if (!("error" in otInGreekNt)) throw new Error("expected error");
+    expect(otInGreekNt.error).toContain("does not contain Genesis");
+    expect(otInGreekNt.error).toContain("wlc");
+    expect(otInGreekNt.error).toContain("lxx");
+
+    const ntInHebrew = await getPassage("John 1:1", assets, "wlc");
+    if (!("error" in ntInHebrew)) throw new Error("expected error");
+    expect(ntInHebrew.error).toContain("does not contain John");
+    expect(ntInHebrew.error).toContain("tisch");
+  });
+
   it("renders passage text for the model", async () => {
     const p = await getPassage("John 8:32", assets);
     if (!("verses" in p)) throw new Error("expected verses");
