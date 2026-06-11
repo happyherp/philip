@@ -4,7 +4,8 @@
 // Verse text is always set via textContent — the model can never alter it.
 import { BOOKS, TRANSLATIONS } from "./bible-data.gen.js";
 
-const MARKER_RE = /\{\{(quote|q)\s+([^{}@]+?)(?:\s*@([a-z0-9]+))?\s*\}\}/g;
+const MARKER_RE =
+  /\{\{(quote|q)\s+([^{}@"“”]+?)(?:\s*@([a-z0-9]+))?(?:\s+(?:"([^"{}]+)"|“([^”{}]+)”))?\s*\}\}/g;
 
 /** Max verses a single marker may render (mirrors src/bible.ts). */
 const MAX_VERSES = 200;
@@ -98,7 +99,12 @@ function translationCovers(meta, book) {
 
 // --- Marker detection ---
 
-/** All complete markers in `text`: { mode, refText, translationId, start, end }. */
+/**
+ * All complete markers in `text`:
+ * { mode, refText, translationId, excerpt, start, end }.
+ * A quoted excerpt ("…" or “…”) makes the marker a sub-verse phrase quote,
+ * regardless of the quote/q keyword.
+ */
 export function findMarkers(text) {
   const markers = [];
   for (const m of text.matchAll(MARKER_RE)) {
@@ -106,6 +112,7 @@ export function findMarkers(text) {
       mode: m[1] === "quote" ? "block" : "inline",
       refText: m[2].trim(),
       translationId: m[3] ?? null,
+      excerpt: m[4] ?? m[5] ?? null,
       start: m.index,
       end: m.index + m[0].length,
     });
@@ -258,6 +265,101 @@ function fillInline(el, verses, refLabel, meta, url) {
   el.appendChild(document.createTextNode(")"));
 }
 
+// --- Sub-verse excerpt quotes ---
+
+/** Normalize text for excerpt matching: NFC, collapsed spaces, case-folded. */
+function normalizeForMatch(s) {
+  return s.normalize("NFC").toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+/** Whether the model-quoted excerpt actually occurs in the verse text. */
+export function excerptInVerses(excerpt, verses) {
+  const needle = normalizeForMatch(excerpt);
+  return needle.length > 0 && normalizeForMatch(verses.join(" ")).includes(needle);
+}
+
+function badQuotationSpan(refLabel, meta, excerpt) {
+  const span = errorSpan(`BAD QUOTATION (${refLabel}, ${meta.name})`);
+  span.classList.add("quote-bad");
+  span.setAttribute("title", `Not found in ${refLabel} (${meta.name}): “${excerpt}”`);
+  return span;
+}
+
+// One popup at a time; closed on outside click, Escape, or toggling again.
+let openPopup = null;
+
+function closePopup() {
+  if (!openPopup) return;
+  openPopup.popup.remove();
+  document.removeEventListener("click", openPopup.onDocClick, true);
+  document.removeEventListener("keydown", openPopup.onKeydown, true);
+  openPopup = null;
+}
+
+/** Show the whole passage as a block quote in a popover near the excerpt. */
+function togglePopup(anchor, verses, refLabel, meta, url) {
+  const wasOurs = openPopup && openPopup.anchor === anchor;
+  closePopup();
+  if (wasOurs) return;
+
+  const popup = document.createElement("div");
+  popup.className = "quote-popup";
+  popup.setAttribute("role", "dialog");
+  const block = document.createElement("blockquote");
+  block.className = "quote-block";
+  fillBlock(block, verses, refLabel, meta, url);
+  popup.appendChild(block);
+  document.body.appendChild(popup);
+
+  // Anchor below the excerpt, clamped to the viewport.
+  const rect = anchor.getBoundingClientRect();
+  popup.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - popup.offsetHeight - 12)}px`;
+  popup.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - popup.offsetWidth - 8))}px`;
+
+  const onDocClick = (e) => {
+    if (!popup.contains(e.target) && e.target !== anchor) closePopup();
+  };
+  const onKeydown = (e) => {
+    if (e.key === "Escape") closePopup();
+  };
+  document.addEventListener("click", onDocClick, true);
+  document.addEventListener("keydown", onKeydown, true);
+  openPopup = { anchor, popup, onDocClick, onKeydown };
+}
+
+/**
+ * Fill an excerpt marker: a highlighted phrase (no reference or attribution
+ * shown) that pops up the whole passage in block format on click. If the
+ * quoted words are not verbatim in the verse text, a BAD QUOTATION marker is
+ * shown instead — the model cannot smuggle altered scripture past the check.
+ */
+function fillExcerpt(el, verses, refLabel, meta, url, excerpt) {
+  if (!excerptInVerses(excerpt, verses)) {
+    el.replaceWith(badQuotationSpan(refLabel, meta, excerpt));
+    return;
+  }
+  el.textContent = "";
+  el.classList.remove("quote-pending");
+
+  const text = document.createElement("span");
+  text.className = "quote-text";
+  text.textContent = excerpt;
+  applyTextAttrs(text, meta);
+  el.appendChild(text);
+
+  el.setAttribute("role", "button");
+  el.setAttribute("tabindex", "0");
+  el.setAttribute("title", `${refLabel} (${meta.name})`);
+  const toggle = (e) => {
+    e.preventDefault();
+    togglePopup(el, verses, refLabel, meta, url);
+  };
+  el.addEventListener("click", toggle);
+  el.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") toggle(e);
+  });
+}
+
 /**
  * Build the DOM element for a marker. Resolves synchronously when the book
  * JSON is already cached; otherwise shows a placeholder and fills in when the
@@ -280,9 +382,10 @@ export function buildQuoteElement(marker, defaultTranslationId, fetchImpl) {
     return errorSpan(`${refLabel} (${meta.name})`);
   }
 
-  const el = document.createElement(marker.mode === "block" ? "blockquote" : "span");
-  el.className = marker.mode === "block" ? "quote-block" : "quote-inline";
-  const fill = marker.mode === "block" ? fillBlock : fillInline;
+  const excerpt = marker.excerpt ?? null;
+  const isBlock = marker.mode === "block" && !excerpt;
+  const el = document.createElement(isBlock ? "blockquote" : "span");
+  el.className = isBlock ? "quote-block" : excerpt ? "quote-excerpt" : "quote-inline";
 
   const url = portalUrl(meta, ref);
   const finish = (json) => {
@@ -291,7 +394,9 @@ export function buildQuoteElement(marker, defaultTranslationId, fetchImpl) {
       el.replaceWith(errorSpan(`${refLabel} (${meta.name})`));
       return;
     }
-    fill(el, verses, refLabel, meta, url);
+    if (excerpt) fillExcerpt(el, verses, refLabel, meta, url, excerpt);
+    else if (isBlock) fillBlock(el, verses, refLabel, meta, url);
+    else fillInline(el, verses, refLabel, meta, url);
   };
 
   const key = `${meta.id}/${ref.book.file}`;
@@ -304,7 +409,7 @@ export function buildQuoteElement(marker, defaultTranslationId, fetchImpl) {
   }
 
   el.classList.add("quote-pending");
-  el.textContent = refLabel;
+  el.textContent = excerpt ?? refLabel;
   loadBook(meta.id, ref.book, fetchImpl)
     .then((json) => {
       if (el.isConnected) finish(json);

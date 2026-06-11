@@ -100,10 +100,15 @@ body {
   border-radius: 0 8px 8px 0;
   font-style: italic;
 }
-/* Bible quotes resolved from {{quote …}} / {{q …}} markers. */
-.msg-body blockquote.quote-block {
-  font-style: normal;
+/* Bible quotes resolved from {{quote …}} / {{q …}} markers. The block quote
+   carries its full styling itself so it also works inside the popup. */
+blockquote.quote-block {
+  margin: 0.4em 0;
   padding: 10px 14px;
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 0 8px 8px 0;
+  font-style: normal;
 }
 .quote-block .quote-ref {
   display: block;
@@ -173,6 +178,39 @@ body {
   direction: rtl;
   text-align: right;
 }
+/* Sub-verse excerpt quotes: a highlighted phrase, click for the whole verse. */
+.quote-excerpt {
+  background: var(--accent-soft);
+  border-bottom: 2px solid var(--accent);
+  border-radius: 4px 4px 0 0;
+  padding: 0.02em 0.3em;
+  cursor: pointer;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.quote-excerpt:hover { border-bottom-color: var(--ink); }
+.quote-excerpt .quote-text { font-style: italic; }
+.quote-popup {
+  position: fixed;
+  z-index: 50;
+  max-width: min(480px, calc(100vw - 24px));
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(43, 43, 39, 0.18);
+  padding: 6px 10px;
+}
+.quote-popup blockquote.quote-block { margin: 4px 0; }
+.quote-error.quote-bad {
+  color: #a04026;
+  font-style: normal;
+  font-size: 0.85em;
+  letter-spacing: 0.04em;
+  border: 1px dashed #a04026;
+  border-radius: 4px;
+  padding: 0 0.35em;
+}
+
 /* Reference links out to a portal (BibleGateway / STEP) for reading in context. */
 a.quote-ref {
   color: inherit;

@@ -176,6 +176,98 @@ describe("buildQuoteElement", () => {
   });
 });
 
+describe("excerpt quotes", () => {
+  it("parses an excerpt in straight or curly quotes, on either keyword", () => {
+    const [a] = findMarkers('{{quote John 8:32 @web "the truth will make you free"}}');
+    expect(a.excerpt).toBe("the truth will make you free");
+    const [b] = findMarkers("{{q John 8:32 @web “the truth”}}");
+    expect(b.excerpt).toBe("the truth");
+    const [c] = findMarkers("{{q John 8:32 @web}}");
+    expect(c.excerpt).toBeNull();
+  });
+
+  it("renders a verified excerpt as a highlighted phrase without reference text", async () => {
+    const { impl } = fetchStub({ "/bible/web/john.json": JOHN_WEB });
+    const [marker] = findMarkers('{{q John 8:32 @web "the truth will make you free"}}');
+    const el = buildQuoteElement(marker, "web", impl);
+    document.body.appendChild(el);
+    await flush();
+
+    expect(el.className).toContain("quote-excerpt");
+    expect(el.textContent).toBe("the truth will make you free");
+    expect(el.textContent).not.toContain("WEB");
+    expect(el.getAttribute("title")).toBe("John 8:32 (WEB)");
+    expect(el.getAttribute("role")).toBe("button");
+    expect(el.querySelector(".quote-text").getAttribute("data-translation")).toBe("web");
+  });
+
+  it("tolerates case and whitespace differences but nothing else", async () => {
+    const { impl } = fetchStub({ "/bible/web/john.json": JOHN_WEB });
+    const [ok] = findMarkers('{{q John 8:32 @web "You will know  the truth"}}');
+    const el = buildQuoteElement(ok, "web", impl);
+    document.body.appendChild(el);
+    await flush();
+    expect(el.isConnected).toBe(true);
+    expect(el.className).toContain("quote-excerpt");
+  });
+
+  it("shows BAD QUOTATION when the words are not in the verse", async () => {
+    const { impl } = fetchStub({ "/bible/web/john.json": JOHN_WEB });
+    const [bad] = findMarkers('{{q John 8:32 @web "the truth will set you free"}}');
+    const el = buildQuoteElement(bad, "web", impl);
+    document.body.appendChild(el);
+    await flush();
+
+    const err = document.querySelector(".quote-bad");
+    expect(err).not.toBeNull();
+    expect(err.textContent).toBe("BAD QUOTATION (John 8:32, WEB)");
+    expect(err.getAttribute("title")).toContain("the truth will set you free");
+    expect(document.body.textContent).not.toContain("{{");
+  });
+
+  it("excerpts spanning a verse boundary are accepted", async () => {
+    const { impl } = fetchStub({ "/bible/web/john.json": JOHN_WEB });
+    const [marker] = findMarkers(
+      '{{q John 8:31-32 @web "truly my disciples. You will know the truth"}}',
+    );
+    const el = buildQuoteElement(marker, "web", impl);
+    document.body.appendChild(el);
+    await flush();
+    expect(el.className).toContain("quote-excerpt");
+  });
+
+  it("opens a popup with the whole passage in block format on click, and closes it again", async () => {
+    const { impl } = fetchStub({ "/bible/web/john.json": JOHN_WEB });
+    const [marker] = findMarkers('{{q John 8:31-32 @web "the truth will make you free"}}');
+    const el = buildQuoteElement(marker, "web", impl);
+    document.body.appendChild(el);
+    await flush();
+
+    el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    const popup = document.querySelector(".quote-popup");
+    expect(popup).not.toBeNull();
+    const block = popup.querySelector("blockquote.quote-block");
+    expect(block.querySelector(".quote-ref").textContent).toBe("John 8:31–32");
+    expect(block.querySelector(".quote-text").textContent).toContain("If you remain in my word");
+    expect(block.querySelector(".quote-attrib").textContent).toBe("— WEB");
+    expect(block.querySelector("a.quote-ref").getAttribute("href")).toContain("biblegateway.com");
+
+    // Click the excerpt again: popup toggles closed.
+    el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(document.querySelector(".quote-popup")).toBeNull();
+
+    // Reopen, then Escape closes.
+    el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(document.querySelector(".quote-popup")).not.toBeNull();
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    expect(document.querySelector(".quote-popup")).toBeNull();
+  });
+
+  it("hides a half-streamed excerpt marker", () => {
+    expect(stripIncompleteTrailingMarker('Read {{q John 8:32 @web "the tru')).toBe("Read ");
+  });
+});
+
 describe("portal links", () => {
   const byId = new Map(TRANSLATIONS.map((t) => [t.id, t]));
 
