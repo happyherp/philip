@@ -50,7 +50,14 @@ export async function streamChat({
   }
 
   if (!res.ok || !res.body) {
-    onError?.(`Request failed (HTTP ${res.status}).`);
+    let message = `Request failed (HTTP ${res.status}).`;
+    try {
+      const data = await res.json();
+      if (data && typeof data.error === "string") message = data.error;
+    } catch {
+      /* non-JSON error body — keep the generic message */
+    }
+    onError?.(message);
     return;
   }
 

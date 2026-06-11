@@ -6,12 +6,12 @@ function mockFetch(body: object, status = 200) {
 }
 
 describe("verifyTurnstileToken", () => {
-  it("returns true when siteverify responds with success", async () => {
+  it("returns 'pass' when siteverify responds with success", async () => {
     const fetchImpl = mockFetch({ success: true });
     vi.stubGlobal("fetch", fetchImpl);
 
     const result = await verifyTurnstileToken("tok_valid", "secret_123", "1.2.3.4");
-    expect(result).toBe(true);
+    expect(result).toBe("pass");
 
     const [url, opts] = fetchImpl.mock.calls[0];
     expect(url).toBe("https://challenges.cloudflare.com/turnstile/v0/siteverify");
@@ -23,12 +23,12 @@ describe("verifyTurnstileToken", () => {
     vi.unstubAllGlobals();
   });
 
-  it("returns false when siteverify responds with failure", async () => {
+  it("returns 'fail' when siteverify rejects the token", async () => {
     const fetchImpl = mockFetch({ success: false, "error-codes": ["invalid-input-response"] });
     vi.stubGlobal("fetch", fetchImpl);
 
     const result = await verifyTurnstileToken("tok_bad", "secret_123", null);
-    expect(result).toBe(false);
+    expect(result).toBe("fail");
 
     // remoteip should be omitted when null
     const body = fetchImpl.mock.calls[0][1].body as string;
@@ -37,22 +37,51 @@ describe("verifyTurnstileToken", () => {
     vi.unstubAllGlobals();
   });
 
-  it("returns false when siteverify returns non-200", async () => {
-    const fetchImpl = mockFetch({}, 500);
+  it("returns 'fail' on token rejection even with a non-200 status", async () => {
+    // siteverify uses 4xx for some definitive rejections.
+    const fetchImpl = mockFetch(
+      { success: false, "error-codes": ["timeout-or-duplicate"] },
+      400,
+    );
     vi.stubGlobal("fetch", fetchImpl);
 
-    const result = await verifyTurnstileToken("tok", "secret", "1.2.3.4");
-    expect(result).toBe(false);
+    const result = await verifyTurnstileToken("tok_reused", "secret", null);
+    expect(result).toBe("fail");
 
     vi.unstubAllGlobals();
   });
 
-  it("returns false when fetch throws (network error)", async () => {
+  it("returns 'unavailable' on secret-side errors (misconfiguration must fail open)", async () => {
+    const fetchImpl = mockFetch(
+      { success: false, "error-codes": ["invalid-input-secret"] },
+      400,
+    );
+    vi.stubGlobal("fetch", fetchImpl);
+
+    const result = await verifyTurnstileToken("tok", "bad_secret", null);
+    expect(result).toBe("unavailable");
+
+    vi.unstubAllGlobals();
+  });
+
+  it("returns 'unavailable' when fetch throws (network error)", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")));
 
-    // verifyTurnstileToken does not catch — the caller (Pages Function) handles it.
-    // But let's verify it does propagate. If the design changes to catch, update this test.
-    await expect(verifyTurnstileToken("tok", "secret", null)).rejects.toThrow("network down");
+    // Network problems must not block users — the caller fails open.
+    const result = await verifyTurnstileToken("tok", "secret", null);
+    expect(result).toBe("unavailable");
+
+    vi.unstubAllGlobals();
+  });
+
+  it("returns 'unavailable' when siteverify returns malformed JSON", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response("not json", { status: 200 })),
+    );
+
+    const result = await verifyTurnstileToken("tok", "secret", null);
+    expect(result).toBe("unavailable");
 
     vi.unstubAllGlobals();
   });

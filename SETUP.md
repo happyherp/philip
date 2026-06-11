@@ -36,42 +36,75 @@ Local secrets live in `.dev.vars` (gitignored):
 OPENROUTER_API_KEY=sk-or-...
 OPENROUTER_MODEL=anthropic/claude-sonnet-4   # optional; any tool-calling model on OpenRouter
 TURNSTILE_SECRET_KEY=...                   # optional; enables Cloudflare Turnstile bot protection
+MAX_MESSAGES_PER_CONVERSATION=200          # optional; per-conversation user-message cap
+MAX_MESSAGES_PER_IP_PER_DAY=300            # optional; per-IP daily request cap
 ```
 
 > The model **must support tool calling** (Philip uses a `get_passage` tool).
 
-## Bot Protection (Cloudflare Turnstile)
+## Bot Protection (Turnstile + usage caps)
 
-Philip uses [Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/)
-to prevent scripted abuse of the `/api/chat` endpoint. Turnstile is free and
-usually invisible to real users.
+`/api/chat` is a public, unauthenticated endpoint that spends OpenRouter
+credits, so it is protected by two independent layers:
 
-### Setup
+1. **[Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/)** —
+   gates the *creation* of new conversations. The widget runs invisibly when
+   the first message is sent (`data-execution="execute"` +
+   `data-appearance="interaction-only"`); it never blocks page load and only
+   becomes visible if Cloudflare decides interaction is needed. The server
+   rejects new conversations without a valid token (when the secret is
+   configured), and **rejects unknown conversation ids** (no silent
+   recreation), so the challenge can't be bypassed by inventing an id.
+   Verification *fails open* if Cloudflare's siteverify itself is unreachable
+   — a Turnstile outage must not take the chat down.
+2. **D1-backed usage caps** — a hard backstop independent of Turnstile:
+   - per conversation: max user messages (default **200**, override with
+     `MAX_MESSAGES_PER_CONVERSATION`)
+   - per IP per UTC day: max chat requests (default **300**, override with
+     `MAX_MESSAGES_PER_IP_PER_DAY`)
 
-1. Go to the [Cloudflare dashboard](https://dash.cloudflare.com/) → **Turnstile** → **Add site**.
-2. Choose **Managed** mode (auto-decides whether to show a challenge).
-3. Copy the **Site Key** and **Secret Key**.
+   Exceeding either returns HTTP 429 with a friendly message. The counters
+   live in the `ip_daily_usage` table (`migrations/0002_ip_daily_usage.sql`).
 
-**Frontend** — replace the placeholder site key in `public/index.html`:
+### Behavior per environment
 
-```html
-<div id="turnstile-widget" class="cf-turnstile"
-     data-sitekey="YOUR_SITE_KEY_HERE" ...>
-```
+| Environment | Turnstile | Usage caps |
+|---|---|---|
+| Production | enforced if `TURNSTILE_SECRET_KEY` is set (Pages **Production** env) | always on |
+| PR previews | enforced if `TURNSTILE_SECRET_KEY` is set in the Pages **Preview** env | always on |
+| `npm run dev` | skipped unless `TURNSTILE_SECRET_KEY` is in `.dev.vars`; the widget errors on `localhost` (unless allowlisted) and the client gracefully sends without a token | always on (local SQLite) |
 
-**Backend (production)** — set the secret:
+### Setup (one-time, Cloudflare dashboard)
+
+1. [Cloudflare dashboard](https://dash.cloudflare.com/) → **Turnstile** → your
+   widget (sitekey `0x4AAAAAADe9n8-uSsPgG9eP`, hardcoded in
+   `public/index.html`).
+2. Under **Hostname management**, make sure these are allowlisted:
+   - `philip-3jf.pages.dev` — covers production **and** all
+     `<branch>.philip-3jf.pages.dev` previews (subdomains are included)
+   - `localhost` — optional, lets the real widget run during local dev
+3. Set the secret for **both** Pages environments (the CLI can only target
+   production, so use the dashboard): **Workers & Pages → philip → Settings →
+   Variables and Secrets** → add `TURNSTILE_SECRET_KEY` to **Production** and
+   **Preview**.
+4. Apply the rate-limit migration to both remote databases:
 
 ```bash
-npx wrangler pages secret put TURNSTILE_SECRET_KEY
+npx wrangler d1 migrations apply philip-db --remote
+npx wrangler d1 migrations apply philip-db-preview --remote --env preview
 ```
 
-**Backend (local dev)** — add to `.dev.vars`:
+### Testing it on a preview deployment
 
-```
-TURNSTILE_SECRET_KEY=your-secret-key
-```
+- With the Preview secret set, open the preview URL, send a first message —
+  it should just work (invisible challenge). `POST /api/chat` without a token
+  (e.g. via `curl`) must return **403**; with an invented `conversationId`
+  it must return **404**.
+- To see the 429 path without sending hundreds of messages, temporarily set
+  `MAX_MESSAGES_PER_IP_PER_DAY=3` as a **Preview** environment variable and
+  redeploy.
 
-### Testing keys
+### Testing keys (local dev)
 
 Cloudflare provides test keys that always pass/fail without real challenges:
 
@@ -81,13 +114,15 @@ Cloudflare provides test keys that always pass/fail without real challenges:
 | Always blocks | `2x00000000000000000000AB` | `2x0000000000000000000000000000000AB` |
 | Forces interactive | `3x00000000000000000000FF` | — |
 
-Use the "always passes" pair in `.dev.vars` + `index.html` for local development.
+To exercise the full flow locally, put the "always passes" secret in
+`.dev.vars` and temporarily swap the sitekey in `index.html`. Without
+`TURNSTILE_SECRET_KEY` in `.dev.vars`, the server skips verification and
+`npm run dev` works out of the box.
 
-### Skipping in dev
-
-If `TURNSTILE_SECRET_KEY` is **not set** in the environment, the server skips
-verification entirely. This means `npm run dev` works out of the box without
-any Turnstile configuration.
+> Note: secret-side siteverify errors (e.g. `invalid-input-secret`) fail
+> **open** by design — a misconfigured secret must not block every user. The
+> reliable way to see a 403 locally is to set any `TURNSTILE_SECRET_KEY` and
+> POST to `/api/chat` without a `cfTurnstileToken`.
 
 ## Regenerate bundled assets (optional)
 
