@@ -15,7 +15,7 @@
  * @param {(id: string) => void} [opts.onConversationId] - called if server returns X-Conversation-Id (new convos)
  * @param {(lang: string) => void} [opts.onLang] - called when the model chooses a language/translation
  * @param {() => void} [opts.onDone]
- * @param {(message: string) => void} [opts.onError]
+ * @param {(message: string, info?: {status?: number, code?: string}) => void} [opts.onError]
  * @param {typeof fetch} [opts.fetchImpl]
  * @param {string} [opts.url]
  */
@@ -51,13 +51,15 @@ export async function streamChat({
 
   if (!res.ok || !res.body) {
     let message = `Request failed (HTTP ${res.status}).`;
+    let code;
     try {
       const data = await res.json();
       if (data && typeof data.error === "string") message = data.error;
+      if (data && typeof data.code === "string") code = data.code;
     } catch {
       /* non-JSON error body — keep the generic message */
     }
-    onError?.(message);
+    onError?.(message, { status: res.status, code });
     return;
   }
 

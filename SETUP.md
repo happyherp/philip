@@ -48,9 +48,11 @@ MAX_MESSAGES_PER_IP_PER_DAY=300            # optional; per-IP daily request cap
 credits, so it is protected by two independent layers:
 
 1. **[Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/)** —
-   gates the *creation* of new conversations. The widget runs invisibly when
-   the first message is sent (`data-execution="execute"` +
-   `data-appearance="interaction-only"`); it never blocks page load and only
+   gates the *creation* of new conversations. The first message is sent
+   immediately without waiting for Turnstile; if the server answers 403
+   `turnstile_required`, the client runs the challenge invisibly
+   (`data-execution="execute"` + `data-appearance="interaction-only"`) and
+   retries once. The widget never blocks page load or sending, and only
    becomes visible if Cloudflare decides interaction is needed. The server
    rejects new conversations without a valid token (when the secret is
    configured), and **rejects unknown conversation ids** (no silent

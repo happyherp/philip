@@ -170,43 +170,53 @@ async function send(text) {
   const bubble = addBubble("assistant", "");
   bubble.classList.add("thinking");
 
-  // New conversations run the (usually invisible) bot check first.
-  let cfToken;
-  if (!conversationId) {
-    await getTurnstileToken();
-    cfToken = consumeTurnstileToken();
+  const attempt = async (cfToken) => {
+    let failure = null;
+    await streamChat({
+      conversationId: conversationId || undefined,
+      message: trimmed,
+      lang,
+      cfTurnstileToken: cfToken || undefined,
+      onConversationId: (id) => {
+        if (!conversationId) {
+          conversationId = id;
+          const url = new URL(location.href);
+          url.searchParams.set("c", id);
+          history.replaceState(null, "", url.toString());
+        }
+      },
+      onLang: (newLang) => switchLang(newLang),
+      onToken: (token) => {
+        bubble.classList.remove("thinking");
+        appendToken(state, token);
+        renderMessageInto(bubble, assistant.content, { lang });
+        log.scrollTop = log.scrollHeight;
+      },
+      onError: (message, info) => {
+        failure = { message, code: info?.code };
+      },
+    });
+    return failure;
+  };
+
+  // Send immediately — never wait for Turnstile up front. If the server
+  // demands bot verification, run the (usually invisible) challenge and
+  // retry once with a fresh token.
+  let failure = await attempt(turnstileToken ? consumeTurnstileToken() : undefined);
+  if (failure && (failure.code === "turnstile_required" || failure.code === "turnstile_failed")) {
+    const token = await getTurnstileToken();
+    if (token) failure = await attempt(consumeTurnstileToken());
   }
 
-  await streamChat({
-    conversationId: conversationId || undefined,
-    message: trimmed,
-    lang,
-    cfTurnstileToken: cfToken || undefined,
-    onConversationId: (id) => {
-      if (!conversationId) {
-        conversationId = id;
-        const url = new URL(location.href);
-        url.searchParams.set("c", id);
-        history.replaceState(null, "", url.toString());
-      }
-    },
-    onLang: (newLang) => switchLang(newLang),
-    onToken: (token) => {
-      bubble.classList.remove("thinking");
-      appendToken(state, token);
-      renderMessageInto(bubble, assistant.content, { lang });
-      log.scrollTop = log.scrollHeight;
-    },
-    onError: (message) => {
-      console.error("[philip]", message);
-      bubble.classList.remove("thinking");
-      bubble.innerHTML = "";
-      const err = document.createElement("div");
-      err.className = "error";
-      err.textContent = `${t.error_prefix}${message}`;
-      bubble.appendChild(err);
-    },
-  });
+  if (failure) {
+    console.error("[philip]", failure.message);
+    bubble.classList.remove("thinking");
+    bubble.innerHTML = "";
+    const err = document.createElement("div");
+    err.className = "error";
+    err.textContent = `${t.error_prefix}${failure.message}`;
+    bubble.appendChild(err);
+  }
 
   setBusy(false);
 }
@@ -231,11 +241,11 @@ input.addEventListener("keydown", (e) => {
 });
 
 // --- Cloudflare Turnstile (invisible, on-demand) ---
-// The widget never blocks the UI. The challenge runs only when the first
-// message of a new conversation is sent (turnstile.execute), and the widget
-// becomes visible only if Cloudflare needs user interaction. If Turnstile is
-// unavailable (script blocked, hostname not allowlisted), we send without a
-// token and let the server decide.
+// The widget never blocks the UI and the happy path never waits for it:
+// messages are sent immediately, and the challenge (turnstile.execute) runs
+// only when the server answers 403 turnstile_required/_failed, after which
+// the request is retried once. The widget becomes visible only if Cloudflare
+// needs user interaction.
 let turnstileToken = null;
 let turnstileUnavailable = false;
 let turnstilePending = null; // { resolve, timer } while a challenge is running

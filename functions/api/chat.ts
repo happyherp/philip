@@ -88,11 +88,18 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const cfToken =
       typeof body.cfTurnstileToken === "string" ? body.cfTurnstileToken : "";
     if (!cfToken) {
-      return json({ error: "Bot verification token is missing." }, 403);
+      // The code tells the client to run the challenge and retry once.
+      return json(
+        { error: "Bot verification token is missing.", code: "turnstile_required" },
+        403,
+      );
     }
     const outcome = await verifyTurnstileToken(cfToken, env.TURNSTILE_SECRET_KEY, ip);
     if (outcome === "fail") {
-      return json({ error: "Bot verification failed." }, 403);
+      return json(
+        { error: "Bot verification failed.", code: "turnstile_failed" },
+        403,
+      );
     }
     if (outcome === "unavailable") {
       // Fail open: a Cloudflare hiccup must not block real users.

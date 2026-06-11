@@ -42,9 +42,9 @@
         autocomplete="off"
       ></textarea>
       <button id="mic" type="button" aria-label="Record voice" title="Record voice">&#127908;</button>
-      <!-- Invisible bot check: the challenge only runs when the first message
-           is sent (turnstile.execute) and only becomes visible if Cloudflare
-           requires user interaction. -->
+      <!-- Invisible bot check: the challenge only runs when the server
+           demands verification (403 → turnstile.execute → retry) and only
+           becomes visible if Cloudflare requires user interaction. -->
       <div id="turnstile-widget" class="cf-turnstile"
            data-sitekey="0x4AAAAAADe9n8-uSsPgG9eP"
            data-callback="onTurnstileToken"
