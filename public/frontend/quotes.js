@@ -329,15 +329,10 @@ function togglePopup(anchor, verses, refLabel, meta, url) {
 
 /**
  * Fill an excerpt marker: a highlighted phrase (no reference or attribution
- * shown) that pops up the whole passage in block format on click. If the
- * quoted words are not verbatim in the verse text, a BAD QUOTATION marker is
- * shown instead — the model cannot smuggle altered scripture past the check.
+ * shown) that pops up the whole passage in block format on click. The caller
+ * has already verified the excerpt occurs in the verse text.
  */
 function fillExcerpt(el, verses, refLabel, meta, url, excerpt) {
-  if (!excerptInVerses(excerpt, verses)) {
-    el.replaceWith(badQuotationSpan(refLabel, meta, excerpt));
-    return;
-  }
   el.textContent = "";
   el.classList.remove("quote-pending");
 
@@ -388,21 +383,28 @@ export function buildQuoteElement(marker, defaultTranslationId, fetchImpl) {
   el.className = isBlock ? "quote-block" : excerpt ? "quote-excerpt" : "quote-inline";
 
   const url = portalUrl(meta, ref);
-  const finish = (json) => {
+  // Returns the element to display: `el` filled in, or an error replacement.
+  // Replacement (not in-place mutation) is required because the synchronous
+  // cache-hit path runs before `el` has a parent — replaceWith would no-op.
+  const resolve = (json) => {
     const verses = collectVerses(json, ref);
     if (verses.length === 0 || verses.length > MAX_VERSES) {
-      el.replaceWith(errorSpan(`${refLabel} (${meta.name})`));
-      return;
+      return errorSpan(`${refLabel} (${meta.name})`);
     }
-    if (excerpt) fillExcerpt(el, verses, refLabel, meta, url, excerpt);
-    else if (isBlock) fillBlock(el, verses, refLabel, meta, url);
-    else fillInline(el, verses, refLabel, meta, url);
+    if (excerpt) {
+      if (!excerptInVerses(excerpt, verses)) return badQuotationSpan(refLabel, meta, excerpt);
+      fillExcerpt(el, verses, refLabel, meta, url, excerpt);
+    } else if (isBlock) {
+      fillBlock(el, verses, refLabel, meta, url);
+    } else {
+      fillInline(el, verses, refLabel, meta, url);
+    }
+    return el;
   };
 
   const key = `${meta.id}/${ref.book.file}`;
   if (bookData.has(key)) {
-    finish(bookData.get(key));
-    return el;
+    return resolve(bookData.get(key));
   }
   if (failedBooks.has(key)) {
     return errorSpan(`${refLabel} (${meta.name})`);
@@ -412,7 +414,9 @@ export function buildQuoteElement(marker, defaultTranslationId, fetchImpl) {
   el.textContent = excerpt ?? refLabel;
   loadBook(meta.id, ref.book, fetchImpl)
     .then((json) => {
-      if (el.isConnected) finish(json);
+      if (!el.isConnected) return;
+      const result = resolve(json);
+      if (result !== el) el.replaceWith(result);
     })
     .catch(() => {
       if (el.isConnected) el.replaceWith(errorSpan(`${refLabel} (${meta.name})`));

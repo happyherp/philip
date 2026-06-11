@@ -263,6 +263,37 @@ describe("excerpt quotes", () => {
     expect(document.querySelector(".quote-popup")).toBeNull();
   });
 
+  it("shows BAD QUOTATION even when the book is already cached (synchronous path)", async () => {
+    const { impl } = fetchStub({ "/bible/web/john.json": JOHN_WEB });
+    // Warm the cache with a good quote first (as happens after any prior quote
+    // from the same book — e.g. the block quote earlier in the conversation).
+    const [good] = findMarkers("{{q John 8:32 @web}}");
+    document.body.appendChild(buildQuoteElement(good, "web", impl));
+    await flush();
+
+    // The bad excerpt now resolves synchronously, before insertion.
+    const [bad] = findMarkers('{{q John 8:32 @web "the truth will set you free"}}');
+    const el = buildQuoteElement(bad, "web", impl);
+    document.body.appendChild(el);
+
+    expect(el.className).toContain("quote-bad");
+    expect(el.textContent).toBe("BAD QUOTATION (John 8:32, WEB)");
+    expect(document.querySelector(".quote-excerpt:empty")).toBeNull();
+  });
+
+  it("shows an error for missing verses even when the book is already cached", async () => {
+    const { impl } = fetchStub({ "/bible/web/john.json": JOHN_WEB });
+    const [good] = findMarkers("{{q John 8:32 @web}}");
+    document.body.appendChild(buildQuoteElement(good, "web", impl));
+    await flush();
+
+    const [missing] = findMarkers("{{q John 99:1 @web}}");
+    const el = buildQuoteElement(missing, "web", impl);
+    document.body.appendChild(el);
+    expect(el.className).toBe("quote-error");
+    expect(el.textContent).toBe("John 99:1 (WEB)");
+  });
+
   it("hides a half-streamed excerpt marker", () => {
     expect(stripIncompleteTrailingMarker('Read {{q John 8:32 @web "the tru')).toBe("Read ");
   });
