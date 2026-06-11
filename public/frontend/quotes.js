@@ -181,6 +181,7 @@ function errorSpan(text) {
 
 function applyTextAttrs(el, meta) {
   el.setAttribute("lang", meta.lang);
+  el.setAttribute("data-translation", meta.id);
   if (meta.dir) el.setAttribute("dir", meta.dir);
 }
 

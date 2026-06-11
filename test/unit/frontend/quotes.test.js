@@ -131,6 +131,7 @@ describe("buildQuoteElement", () => {
     const text = el.querySelector(".quote-text");
     expect(text.getAttribute("lang")).toBe("hbo");
     expect(text.getAttribute("dir")).toBe("rtl");
+    expect(text.getAttribute("data-translation")).toBe("wlc");
   });
 
   it("falls back to a plain-reference span for unparseable references", () => {
