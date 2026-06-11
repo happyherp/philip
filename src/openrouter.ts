@@ -50,7 +50,7 @@ export interface RunChatDeps {
  */
 export async function runChat(history: ChatMessage[], deps: RunChatDeps): Promise<string> {
   const fetchImpl = deps.fetchImpl ?? fetch;
-  const maxIterations = deps.maxIterations ?? 6;
+  const maxIterations = deps.maxIterations ?? 20;
 
   const messages: ChatMessage[] = [
     { role: "system", content: deps.systemPrompt ?? SYSTEM_PROMPT },
