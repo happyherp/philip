@@ -299,6 +299,76 @@ describe("excerpt quotes", () => {
   });
 });
 
+describe("reference mentions ({{ref …}})", () => {
+  it("parses ref markers and ignores any excerpt on them", () => {
+    const [m] = findMarkers("Compare {{ref Genesis 1:1 @web}} here.");
+    expect(m).toMatchObject({ mode: "ref", refText: "Genesis 1:1", translationId: "web" });
+    const [withQuotes] = findMarkers('{{ref Genesis 1:1 @web "whatever"}}');
+    expect(withQuotes.excerpt).toBeNull();
+  });
+
+  it("renders just the reference text without fetching anything", () => {
+    const { impl, calls } = fetchStub({});
+    const [m] = findMarkers("{{ref Genesis 1:1 @web}}");
+    const el = buildQuoteElement(m, "web", impl);
+    document.body.appendChild(el);
+
+    expect(el.className).toBe("quote-refmark");
+    expect(el.textContent).toBe("Genesis 1:1");
+    expect(el.getAttribute("role")).toBe("button");
+    expect(el.getAttribute("title")).toBe("WEB");
+    expect(calls).toHaveLength(0); // lazy: nothing fetched until clicked
+  });
+
+  it("loads the book on first click and shows the passage popup", async () => {
+    const genesis = {
+      book: "Genesis",
+      translation: "WEB",
+      chapters: { 1: { 1: "In the beginning, God created the heavens and the earth." } },
+    };
+    const { impl, calls } = fetchStub({ "/bible/web/genesis.json": genesis });
+    const [m] = findMarkers("{{ref Genesis 1:1 @web}}");
+    const el = buildQuoteElement(m, "web", impl);
+    document.body.appendChild(el);
+
+    el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await flush();
+
+    expect(calls).toHaveLength(1);
+    const popup = document.querySelector(".quote-popup");
+    expect(popup).not.toBeNull();
+    expect(popup.querySelector(".quote-ref").textContent).toBe("Genesis 1:1");
+    expect(popup.querySelector(".quote-text").textContent).toContain("In the beginning");
+    expect(popup.querySelector(".quote-attrib").textContent).toBe("— WEB");
+
+    // Second click toggles the popup closed without refetching.
+    el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await flush();
+    expect(document.querySelector(".quote-popup")).toBeNull();
+    expect(calls).toHaveLength(1);
+  });
+
+  it("degrades to an error span when the verse does not exist", async () => {
+    const genesis = { book: "Genesis", translation: "WEB", chapters: { 1: { 1: "text" } } };
+    const { impl } = fetchStub({ "/bible/web/genesis.json": genesis });
+    const [m] = findMarkers("{{ref Genesis 99:1 @web}}");
+    const el = buildQuoteElement(m, "web", impl);
+    document.body.appendChild(el);
+
+    el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await flush();
+    expect(document.querySelector(".quote-refmark")).toBeNull();
+    expect(document.querySelector(".quote-error").textContent).toBe("Genesis 99:1 (WEB)");
+    expect(document.querySelector(".quote-popup")).toBeNull();
+  });
+
+  it("still respects translation coverage", () => {
+    const [m] = findMarkers("{{ref Genesis 1:1 @tisch}}");
+    const el = buildQuoteElement(m, "web");
+    expect(el.className).toBe("quote-error");
+  });
+});
+
 describe("portal links", () => {
   const byId = new Map(TRANSLATIONS.map((t) => [t.id, t]));
 

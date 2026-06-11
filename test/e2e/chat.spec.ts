@@ -96,6 +96,31 @@ test.describe("text chat", () => {
     await expect(popup).toHaveCount(0);
   });
 
+  test("a reference mention shows the passage in a popup on click", async ({
+    page,
+  }) => {
+    await mockChatStream(page, [
+      "Compare {{ref Genesis 1:1 @web}}, where the same verb appears.",
+    ]);
+    await page.goto("/");
+
+    await page.locator("#input").fill("tell me more");
+    await page.locator("#send").click();
+
+    const refmark = page.locator(".quote-refmark");
+    await expect(refmark).toHaveText("Genesis 1:1");
+    const bubble = page.locator(".msg-assistant .msg-body").last();
+    await expect(bubble).not.toContainText("{{");
+
+    await refmark.click();
+    const popup = page.locator(".quote-popup");
+    await expect(popup.locator(".quote-text")).toContainText("In the beginning");
+    await expect(popup.locator(".quote-attrib")).toHaveText("— WEB");
+
+    await page.keyboard.press("Escape");
+    await expect(popup).toHaveCount(0);
+  });
+
   test("a wrong excerpt shows a BAD QUOTATION marker", async ({ page }) => {
     await mockChatStream(page, [
       'He says {{q John 8:32 @web "the truth will set you free"}} plainly.',

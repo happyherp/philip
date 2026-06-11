@@ -5,7 +5,7 @@
 import { BOOKS, TRANSLATIONS } from "./bible-data.gen.js";
 
 const MARKER_RE =
-  /\{\{(quote|q)\s+([^{}@"“”]+?)(?:\s*@([a-z0-9]+))?(?:\s+(?:"([^"{}]+)"|“([^”{}]+)”))?\s*\}\}/g;
+  /\{\{(quote|q|ref)\s+([^{}@"“”]+?)(?:\s*@([a-z0-9]+))?(?:\s+(?:"([^"{}]+)"|“([^”{}]+)”))?\s*\}\}/g;
 
 /** Max verses a single marker may render (mirrors src/bible.ts). */
 const MAX_VERSES = 200;
@@ -102,17 +102,20 @@ function translationCovers(meta, book) {
 /**
  * All complete markers in `text`:
  * { mode, refText, translationId, excerpt, start, end }.
- * A quoted excerpt ("…" or “…”) makes the marker a sub-verse phrase quote,
- * regardless of the quote/q keyword.
+ * Modes: "block" ({{quote …}}), "inline" ({{q …}}), "ref" ({{ref …}} — a bare
+ * reference mention, no verse text shown). A quoted excerpt ("…" or “…”)
+ * makes a quote/q marker a sub-verse phrase quote; it is ignored on ref.
  */
 export function findMarkers(text) {
   const markers = [];
   for (const m of text.matchAll(MARKER_RE)) {
+    const keyword = m[1];
+    const mode = keyword === "quote" ? "block" : keyword === "q" ? "inline" : "ref";
     markers.push({
-      mode: m[1] === "quote" ? "block" : "inline",
+      mode,
       refText: m[2].trim(),
       translationId: m[3] ?? null,
-      excerpt: m[4] ?? m[5] ?? null,
+      excerpt: mode === "ref" ? null : (m[4] ?? m[5] ?? null),
       start: m.index,
       end: m.index + m[0].length,
     });
@@ -356,6 +359,46 @@ function fillExcerpt(el, verses, refLabel, meta, url, excerpt) {
 }
 
 /**
+ * Fill a bare reference mention ({{ref …}}): shows only the reference text,
+ * and pops up the passage in block format on click. The book JSON is loaded
+ * lazily on the first click — a mention that is never tapped costs nothing.
+ */
+function fillRefMark(el, ref, refLabel, meta, url, fetchImpl) {
+  el.textContent = refLabel;
+  el.setAttribute("role", "button");
+  el.setAttribute("tabindex", "0");
+  el.setAttribute("title", meta.name);
+
+  const toggle = async (e) => {
+    e.preventDefault();
+    if (openPopup && openPopup.anchor === el) {
+      closePopup();
+      return;
+    }
+    el.classList.add("quote-loading");
+    let json;
+    try {
+      json = bookData.get(`${meta.id}/${ref.book.file}`) ?? (await loadBook(meta.id, ref.book, fetchImpl));
+    } catch {
+      el.replaceWith(errorSpan(`${refLabel} (${meta.name})`));
+      return;
+    } finally {
+      el.classList.remove("quote-loading");
+    }
+    const verses = collectVerses(json, ref);
+    if (verses.length === 0 || verses.length > MAX_VERSES) {
+      el.replaceWith(errorSpan(`${refLabel} (${meta.name})`));
+      return;
+    }
+    if (el.isConnected) togglePopup(el, verses, refLabel, meta, url);
+  };
+  el.addEventListener("click", toggle);
+  el.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") toggle(e);
+  });
+}
+
+/**
  * Build the DOM element for a marker. Resolves synchronously when the book
  * JSON is already cached; otherwise shows a placeholder and fills in when the
  * fetch lands (skipped if the element was re-rendered away in the meantime).
@@ -375,6 +418,13 @@ export function buildQuoteElement(marker, defaultTranslationId, fetchImpl) {
   const refLabel = displayReference(ref);
   if (!translationCovers(meta, ref.book)) {
     return errorSpan(`${refLabel} (${meta.name})`);
+  }
+
+  if (marker.mode === "ref") {
+    const el = document.createElement("span");
+    el.className = "quote-refmark";
+    fillRefMark(el, ref, refLabel, meta, portalUrl(meta, ref), fetchImpl);
+    return el;
   }
 
   const excerpt = marker.excerpt ?? null;

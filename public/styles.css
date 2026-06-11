@@ -194,12 +194,24 @@ blockquote.quote-block {
   position: fixed;
   z-index: 50;
   max-width: min(480px, calc(100vw - 24px));
+  max-height: 60vh;
+  overflow-y: auto;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 10px;
   box-shadow: 0 8px 28px rgba(43, 43, 39, 0.18);
   padding: 6px 10px;
 }
+/* Bare reference mentions ({{ref …}}): tap to see the passage. */
+.quote-refmark {
+  color: var(--accent);
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.quote-refmark:hover { text-decoration-style: solid; }
+.quote-refmark.quote-loading { opacity: 0.6; }
 .quote-popup blockquote.quote-block { margin: 4px 0; }
 .quote-error.quote-bad {
   color: #a04026;
