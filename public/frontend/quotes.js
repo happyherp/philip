@@ -4,7 +4,8 @@
 // Verse text is always set via textContent — the model can never alter it.
 import { BOOKS, TRANSLATIONS } from "./bible-data.gen.js";
 
-const MARKER_RE = /\{\{(quote|q)\s+([^{}@]+?)(?:\s*@([a-z0-9]+))?\s*\}\}/g;
+const MARKER_RE =
+  /\{\{(quote|q|ref)\s+([^{}@"“”]+?)(?:\s*@([a-z0-9]+))?(?:\s+(?:"([^"{}]+)"|“([^”{}]+)”))?\s*\}\}/g;
 
 /** Max verses a single marker may render (mirrors src/bible.ts). */
 const MAX_VERSES = 200;
@@ -98,14 +99,23 @@ function translationCovers(meta, book) {
 
 // --- Marker detection ---
 
-/** All complete markers in `text`: { mode, refText, translationId, start, end }. */
+/**
+ * All complete markers in `text`:
+ * { mode, refText, translationId, excerpt, start, end }.
+ * Modes: "block" ({{quote …}}), "inline" ({{q …}}), "ref" ({{ref …}} — a bare
+ * reference mention, no verse text shown). A quoted excerpt ("…" or “…”)
+ * makes a quote/q marker a sub-verse phrase quote; it is ignored on ref.
+ */
 export function findMarkers(text) {
   const markers = [];
   for (const m of text.matchAll(MARKER_RE)) {
+    const keyword = m[1];
+    const mode = keyword === "quote" ? "block" : keyword === "q" ? "inline" : "ref";
     markers.push({
-      mode: m[1] === "quote" ? "block" : "inline",
+      mode,
       refText: m[2].trim(),
       translationId: m[3] ?? null,
+      excerpt: mode === "ref" ? null : (m[4] ?? m[5] ?? null),
       start: m.index,
       end: m.index + m[0].length,
     });
@@ -258,6 +268,136 @@ function fillInline(el, verses, refLabel, meta, url) {
   el.appendChild(document.createTextNode(")"));
 }
 
+// --- Sub-verse excerpt quotes ---
+
+/** Normalize text for excerpt matching: NFC, collapsed spaces, case-folded. */
+function normalizeForMatch(s) {
+  return s.normalize("NFC").toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+/** Whether the model-quoted excerpt actually occurs in the verse text. */
+export function excerptInVerses(excerpt, verses) {
+  const needle = normalizeForMatch(excerpt);
+  return needle.length > 0 && normalizeForMatch(verses.join(" ")).includes(needle);
+}
+
+function badQuotationSpan(refLabel, meta, excerpt) {
+  const span = errorSpan(`BAD QUOTATION (${refLabel}, ${meta.name})`);
+  span.classList.add("quote-bad");
+  span.setAttribute("title", `Not found in ${refLabel} (${meta.name}): “${excerpt}”`);
+  return span;
+}
+
+// One popup at a time; closed on outside click, Escape, or toggling again.
+let openPopup = null;
+
+function closePopup() {
+  if (!openPopup) return;
+  openPopup.popup.remove();
+  document.removeEventListener("click", openPopup.onDocClick, true);
+  document.removeEventListener("keydown", openPopup.onKeydown, true);
+  openPopup = null;
+}
+
+/** Show the whole passage as a block quote in a popover near the excerpt. */
+function togglePopup(anchor, verses, refLabel, meta, url) {
+  const wasOurs = openPopup && openPopup.anchor === anchor;
+  closePopup();
+  if (wasOurs) return;
+
+  const popup = document.createElement("div");
+  popup.className = "quote-popup";
+  popup.setAttribute("role", "dialog");
+  const block = document.createElement("blockquote");
+  block.className = "quote-block";
+  fillBlock(block, verses, refLabel, meta, url);
+  popup.appendChild(block);
+  document.body.appendChild(popup);
+
+  // Anchor below the excerpt, clamped to the viewport.
+  const rect = anchor.getBoundingClientRect();
+  popup.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - popup.offsetHeight - 12)}px`;
+  popup.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - popup.offsetWidth - 8))}px`;
+
+  const onDocClick = (e) => {
+    if (!popup.contains(e.target) && e.target !== anchor) closePopup();
+  };
+  const onKeydown = (e) => {
+    if (e.key === "Escape") closePopup();
+  };
+  document.addEventListener("click", onDocClick, true);
+  document.addEventListener("keydown", onKeydown, true);
+  openPopup = { anchor, popup, onDocClick, onKeydown };
+}
+
+/**
+ * Fill an excerpt marker: a highlighted phrase (no reference or attribution
+ * shown) that pops up the whole passage in block format on click. The caller
+ * has already verified the excerpt occurs in the verse text.
+ */
+function fillExcerpt(el, verses, refLabel, meta, url, excerpt) {
+  el.textContent = "";
+  el.classList.remove("quote-pending");
+
+  const text = document.createElement("span");
+  text.className = "quote-text";
+  text.textContent = excerpt;
+  applyTextAttrs(text, meta);
+  el.appendChild(text);
+
+  el.setAttribute("role", "button");
+  el.setAttribute("tabindex", "0");
+  el.setAttribute("title", `${refLabel} (${meta.name})`);
+  const toggle = (e) => {
+    e.preventDefault();
+    togglePopup(el, verses, refLabel, meta, url);
+  };
+  el.addEventListener("click", toggle);
+  el.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") toggle(e);
+  });
+}
+
+/**
+ * Fill a bare reference mention ({{ref …}}): shows only the reference text,
+ * and pops up the passage in block format on click. The book JSON is loaded
+ * lazily on the first click — a mention that is never tapped costs nothing.
+ */
+function fillRefMark(el, ref, refLabel, meta, url, fetchImpl) {
+  el.textContent = refLabel;
+  el.setAttribute("role", "button");
+  el.setAttribute("tabindex", "0");
+  el.setAttribute("title", meta.name);
+
+  const toggle = async (e) => {
+    e.preventDefault();
+    if (openPopup && openPopup.anchor === el) {
+      closePopup();
+      return;
+    }
+    el.classList.add("quote-loading");
+    let json;
+    try {
+      json = bookData.get(`${meta.id}/${ref.book.file}`) ?? (await loadBook(meta.id, ref.book, fetchImpl));
+    } catch {
+      el.replaceWith(errorSpan(`${refLabel} (${meta.name})`));
+      return;
+    } finally {
+      el.classList.remove("quote-loading");
+    }
+    const verses = collectVerses(json, ref);
+    if (verses.length === 0 || verses.length > MAX_VERSES) {
+      el.replaceWith(errorSpan(`${refLabel} (${meta.name})`));
+      return;
+    }
+    if (el.isConnected) togglePopup(el, verses, refLabel, meta, url);
+  };
+  el.addEventListener("click", toggle);
+  el.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") toggle(e);
+  });
+}
+
 /**
  * Build the DOM element for a marker. Resolves synchronously when the book
  * JSON is already cached; otherwise shows a placeholder and fills in when the
@@ -280,34 +420,53 @@ export function buildQuoteElement(marker, defaultTranslationId, fetchImpl) {
     return errorSpan(`${refLabel} (${meta.name})`);
   }
 
-  const el = document.createElement(marker.mode === "block" ? "blockquote" : "span");
-  el.className = marker.mode === "block" ? "quote-block" : "quote-inline";
-  const fill = marker.mode === "block" ? fillBlock : fillInline;
+  if (marker.mode === "ref") {
+    const el = document.createElement("span");
+    el.className = "quote-refmark";
+    fillRefMark(el, ref, refLabel, meta, portalUrl(meta, ref), fetchImpl);
+    return el;
+  }
+
+  const excerpt = marker.excerpt ?? null;
+  const isBlock = marker.mode === "block" && !excerpt;
+  const el = document.createElement(isBlock ? "blockquote" : "span");
+  el.className = isBlock ? "quote-block" : excerpt ? "quote-excerpt" : "quote-inline";
 
   const url = portalUrl(meta, ref);
-  const finish = (json) => {
+  // Returns the element to display: `el` filled in, or an error replacement.
+  // Replacement (not in-place mutation) is required because the synchronous
+  // cache-hit path runs before `el` has a parent — replaceWith would no-op.
+  const resolve = (json) => {
     const verses = collectVerses(json, ref);
     if (verses.length === 0 || verses.length > MAX_VERSES) {
-      el.replaceWith(errorSpan(`${refLabel} (${meta.name})`));
-      return;
+      return errorSpan(`${refLabel} (${meta.name})`);
     }
-    fill(el, verses, refLabel, meta, url);
+    if (excerpt) {
+      if (!excerptInVerses(excerpt, verses)) return badQuotationSpan(refLabel, meta, excerpt);
+      fillExcerpt(el, verses, refLabel, meta, url, excerpt);
+    } else if (isBlock) {
+      fillBlock(el, verses, refLabel, meta, url);
+    } else {
+      fillInline(el, verses, refLabel, meta, url);
+    }
+    return el;
   };
 
   const key = `${meta.id}/${ref.book.file}`;
   if (bookData.has(key)) {
-    finish(bookData.get(key));
-    return el;
+    return resolve(bookData.get(key));
   }
   if (failedBooks.has(key)) {
     return errorSpan(`${refLabel} (${meta.name})`);
   }
 
   el.classList.add("quote-pending");
-  el.textContent = refLabel;
+  el.textContent = excerpt ?? refLabel;
   loadBook(meta.id, ref.book, fetchImpl)
     .then((json) => {
-      if (el.isConnected) finish(json);
+      if (!el.isConnected) return;
+      const result = resolve(json);
+      if (result !== el) el.replaceWith(result);
     })
     .catch(() => {
       if (el.isConnected) el.replaceWith(errorSpan(`${refLabel} (${meta.name})`));

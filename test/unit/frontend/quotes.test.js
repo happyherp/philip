@@ -176,6 +176,199 @@ describe("buildQuoteElement", () => {
   });
 });
 
+describe("excerpt quotes", () => {
+  it("parses an excerpt in straight or curly quotes, on either keyword", () => {
+    const [a] = findMarkers('{{quote John 8:32 @web "the truth will make you free"}}');
+    expect(a.excerpt).toBe("the truth will make you free");
+    const [b] = findMarkers("{{q John 8:32 @web “the truth”}}");
+    expect(b.excerpt).toBe("the truth");
+    const [c] = findMarkers("{{q John 8:32 @web}}");
+    expect(c.excerpt).toBeNull();
+  });
+
+  it("renders a verified excerpt as a highlighted phrase without reference text", async () => {
+    const { impl } = fetchStub({ "/bible/web/john.json": JOHN_WEB });
+    const [marker] = findMarkers('{{q John 8:32 @web "the truth will make you free"}}');
+    const el = buildQuoteElement(marker, "web", impl);
+    document.body.appendChild(el);
+    await flush();
+
+    expect(el.className).toContain("quote-excerpt");
+    expect(el.textContent).toBe("the truth will make you free");
+    expect(el.textContent).not.toContain("WEB");
+    expect(el.getAttribute("title")).toBe("John 8:32 (WEB)");
+    expect(el.getAttribute("role")).toBe("button");
+    expect(el.querySelector(".quote-text").getAttribute("data-translation")).toBe("web");
+  });
+
+  it("tolerates case and whitespace differences but nothing else", async () => {
+    const { impl } = fetchStub({ "/bible/web/john.json": JOHN_WEB });
+    const [ok] = findMarkers('{{q John 8:32 @web "You will know  the truth"}}');
+    const el = buildQuoteElement(ok, "web", impl);
+    document.body.appendChild(el);
+    await flush();
+    expect(el.isConnected).toBe(true);
+    expect(el.className).toContain("quote-excerpt");
+  });
+
+  it("shows BAD QUOTATION when the words are not in the verse", async () => {
+    const { impl } = fetchStub({ "/bible/web/john.json": JOHN_WEB });
+    const [bad] = findMarkers('{{q John 8:32 @web "the truth will set you free"}}');
+    const el = buildQuoteElement(bad, "web", impl);
+    document.body.appendChild(el);
+    await flush();
+
+    const err = document.querySelector(".quote-bad");
+    expect(err).not.toBeNull();
+    expect(err.textContent).toBe("BAD QUOTATION (John 8:32, WEB)");
+    expect(err.getAttribute("title")).toContain("the truth will set you free");
+    expect(document.body.textContent).not.toContain("{{");
+  });
+
+  it("excerpts spanning a verse boundary are accepted", async () => {
+    const { impl } = fetchStub({ "/bible/web/john.json": JOHN_WEB });
+    const [marker] = findMarkers(
+      '{{q John 8:31-32 @web "truly my disciples. You will know the truth"}}',
+    );
+    const el = buildQuoteElement(marker, "web", impl);
+    document.body.appendChild(el);
+    await flush();
+    expect(el.className).toContain("quote-excerpt");
+  });
+
+  it("opens a popup with the whole passage in block format on click, and closes it again", async () => {
+    const { impl } = fetchStub({ "/bible/web/john.json": JOHN_WEB });
+    const [marker] = findMarkers('{{q John 8:31-32 @web "the truth will make you free"}}');
+    const el = buildQuoteElement(marker, "web", impl);
+    document.body.appendChild(el);
+    await flush();
+
+    el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    const popup = document.querySelector(".quote-popup");
+    expect(popup).not.toBeNull();
+    const block = popup.querySelector("blockquote.quote-block");
+    expect(block.querySelector(".quote-ref").textContent).toBe("John 8:31–32");
+    expect(block.querySelector(".quote-text").textContent).toContain("If you remain in my word");
+    expect(block.querySelector(".quote-attrib").textContent).toBe("— WEB");
+    expect(block.querySelector("a.quote-ref").getAttribute("href")).toContain("biblegateway.com");
+
+    // Click the excerpt again: popup toggles closed.
+    el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(document.querySelector(".quote-popup")).toBeNull();
+
+    // Reopen, then Escape closes.
+    el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(document.querySelector(".quote-popup")).not.toBeNull();
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    expect(document.querySelector(".quote-popup")).toBeNull();
+  });
+
+  it("shows BAD QUOTATION even when the book is already cached (synchronous path)", async () => {
+    const { impl } = fetchStub({ "/bible/web/john.json": JOHN_WEB });
+    // Warm the cache with a good quote first (as happens after any prior quote
+    // from the same book — e.g. the block quote earlier in the conversation).
+    const [good] = findMarkers("{{q John 8:32 @web}}");
+    document.body.appendChild(buildQuoteElement(good, "web", impl));
+    await flush();
+
+    // The bad excerpt now resolves synchronously, before insertion.
+    const [bad] = findMarkers('{{q John 8:32 @web "the truth will set you free"}}');
+    const el = buildQuoteElement(bad, "web", impl);
+    document.body.appendChild(el);
+
+    expect(el.className).toContain("quote-bad");
+    expect(el.textContent).toBe("BAD QUOTATION (John 8:32, WEB)");
+    expect(document.querySelector(".quote-excerpt:empty")).toBeNull();
+  });
+
+  it("shows an error for missing verses even when the book is already cached", async () => {
+    const { impl } = fetchStub({ "/bible/web/john.json": JOHN_WEB });
+    const [good] = findMarkers("{{q John 8:32 @web}}");
+    document.body.appendChild(buildQuoteElement(good, "web", impl));
+    await flush();
+
+    const [missing] = findMarkers("{{q John 99:1 @web}}");
+    const el = buildQuoteElement(missing, "web", impl);
+    document.body.appendChild(el);
+    expect(el.className).toBe("quote-error");
+    expect(el.textContent).toBe("John 99:1 (WEB)");
+  });
+
+  it("hides a half-streamed excerpt marker", () => {
+    expect(stripIncompleteTrailingMarker('Read {{q John 8:32 @web "the tru')).toBe("Read ");
+  });
+});
+
+describe("reference mentions ({{ref …}})", () => {
+  it("parses ref markers and ignores any excerpt on them", () => {
+    const [m] = findMarkers("Compare {{ref Genesis 1:1 @web}} here.");
+    expect(m).toMatchObject({ mode: "ref", refText: "Genesis 1:1", translationId: "web" });
+    const [withQuotes] = findMarkers('{{ref Genesis 1:1 @web "whatever"}}');
+    expect(withQuotes.excerpt).toBeNull();
+  });
+
+  it("renders just the reference text without fetching anything", () => {
+    const { impl, calls } = fetchStub({});
+    const [m] = findMarkers("{{ref Genesis 1:1 @web}}");
+    const el = buildQuoteElement(m, "web", impl);
+    document.body.appendChild(el);
+
+    expect(el.className).toBe("quote-refmark");
+    expect(el.textContent).toBe("Genesis 1:1");
+    expect(el.getAttribute("role")).toBe("button");
+    expect(el.getAttribute("title")).toBe("WEB");
+    expect(calls).toHaveLength(0); // lazy: nothing fetched until clicked
+  });
+
+  it("loads the book on first click and shows the passage popup", async () => {
+    const genesis = {
+      book: "Genesis",
+      translation: "WEB",
+      chapters: { 1: { 1: "In the beginning, God created the heavens and the earth." } },
+    };
+    const { impl, calls } = fetchStub({ "/bible/web/genesis.json": genesis });
+    const [m] = findMarkers("{{ref Genesis 1:1 @web}}");
+    const el = buildQuoteElement(m, "web", impl);
+    document.body.appendChild(el);
+
+    el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await flush();
+
+    expect(calls).toHaveLength(1);
+    const popup = document.querySelector(".quote-popup");
+    expect(popup).not.toBeNull();
+    expect(popup.querySelector(".quote-ref").textContent).toBe("Genesis 1:1");
+    expect(popup.querySelector(".quote-text").textContent).toContain("In the beginning");
+    expect(popup.querySelector(".quote-attrib").textContent).toBe("— WEB");
+
+    // Second click toggles the popup closed without refetching.
+    el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await flush();
+    expect(document.querySelector(".quote-popup")).toBeNull();
+    expect(calls).toHaveLength(1);
+  });
+
+  it("degrades to an error span when the verse does not exist", async () => {
+    const genesis = { book: "Genesis", translation: "WEB", chapters: { 1: { 1: "text" } } };
+    const { impl } = fetchStub({ "/bible/web/genesis.json": genesis });
+    const [m] = findMarkers("{{ref Genesis 99:1 @web}}");
+    const el = buildQuoteElement(m, "web", impl);
+    document.body.appendChild(el);
+
+    el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await flush();
+    expect(document.querySelector(".quote-refmark")).toBeNull();
+    expect(document.querySelector(".quote-error").textContent).toBe("Genesis 99:1 (WEB)");
+    expect(document.querySelector(".quote-popup")).toBeNull();
+  });
+
+  it("still respects translation coverage", () => {
+    const [m] = findMarkers("{{ref Genesis 1:1 @tisch}}");
+    const el = buildQuoteElement(m, "web");
+    expect(el.className).toBe("quote-error");
+  });
+});
+
 describe("portal links", () => {
   const byId = new Map(TRANSLATIONS.map((t) => [t.id, t]));
 
