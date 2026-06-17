@@ -1,12 +1,19 @@
 name: CI
 
+# Extended checks that run in parallel with (and never block) the Deploy
+# workflow. They report their own pass/fail status so regressions are still
+# surfaced — they just don't sit on the critical path to production.
+#
+# Unit tests + typecheck are the deploy gate and live in deploy.yml; they are
+# intentionally not duplicated here.
+
 on:
   push:
     branches: [main]
   pull_request:
 
 jobs:
-  test:
+  e2e:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -15,13 +22,36 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run typecheck
-      - run: npm test
+
+      # Cache the downloaded browser binaries (~100MB) keyed on the Playwright
+      # version, so we only re-download when Playwright itself is bumped. This
+      # turns the formerly multi-minute install into seconds and saves bandwidth.
+      - name: Resolve Playwright version
+        id: pw
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ steps.pw.outputs.version }}
+
+      # On a cache miss, install browsers AND the OS libraries they need.
+      - name: Install Playwright (browsers + OS deps)
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      # On a cache hit the browsers are restored; only the OS libraries (which
+      # aren't part of the cached path) still need installing.
+      - name: Install Playwright OS deps
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+
+      - run: npm run test:e2e
 
   integration:
     runs-on: ubuntu-latest
-    # Runs on every push/PR. The step itself skips gracefully when the
-    # OPENROUTER_API_KEY secret is unavailable (e.g. PRs from forks).
+    # The step itself skips gracefully when the OPENROUTER_API_KEY secret is
+    # unavailable (e.g. PRs from forks).
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
