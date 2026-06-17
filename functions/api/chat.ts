@@ -2,20 +2,19 @@
 // Thin wrapper that wires the Worker env (asset binding + secrets) into the
 // transport-agnostic chat logic in src/chat.ts.
 //
-// New contract (server owns history):
-//   POST { conversationId?: string, message: string }
-//   - If no conversationId, creates a new conversation in D1.
-//   - Always persists the incoming user message first.
-//   - Runs Philip, streams tokens, then persists the final assistant reply.
-//   - Returns SSE + X-Conversation-Id header (so client can learn a new id instantly).
+// Contract (the browser owns history):
+//   POST { messages: [{ role, content }], lang?, cfTurnstileToken? }
+//   - The full conversation lives in the reader's browser and is sent each turn.
+//   - The server never persists conversation content (see /api/share for the
+//     explicit, opt-in sharing path).
+//   - Runs Philip and streams tokens back as SSE.
 
-import {
-  appendMessage,
-  createConversation,
-  getConversation,
-} from "../../src/db.ts";
-import { streamChatResponse } from "../../src/chat.ts";
+import { streamChatResponse, sanitizeHistory } from "../../src/chat.ts";
 import { verifyTurnstileToken } from "../../src/turnstile.ts";
+import {
+  mintContinuationToken,
+  verifyContinuationToken,
+} from "../../src/continuation.ts";
 import { DEFAULT_LIMITS, recordIpUsage } from "../../src/rate-limit.ts";
 
 interface Env {
@@ -38,10 +37,6 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     console.error("[philip] OPENROUTER_API_KEY is not set");
     return json({ error: "Server is missing OPENROUTER_API_KEY." }, 500);
   }
-  if (!env.DB) {
-    console.error("[philip] DB binding is not configured");
-    return json({ error: "Server is missing DB binding." }, 500);
-  }
 
   let body: any;
   try {
@@ -50,11 +45,14 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     return json({ error: "Invalid JSON body." }, 400);
   }
 
-  const conversationId =
-    typeof body.conversationId === "string" ? body.conversationId : undefined;
-
-  const userMessage =
-    typeof body.message === "string" ? body.message.trim() : "";
+  // The browser sends the full conversation each turn; we only trust role/content.
+  const history = sanitizeHistory(body.messages);
+  if (history.length === 0) {
+    return json({ error: "message is required" }, 400);
+  }
+  if (history[history.length - 1].role !== "user") {
+    return json({ error: "The last message must be from the user." }, 400);
+  }
 
   // Language: prefer explicit body param, fall back to Accept-Language header, default "en".
   const lang = resolveLang(
@@ -62,49 +60,45 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     request.headers.get("Accept-Language"),
   );
 
-  if (!userMessage) {
-    return json({ error: "message is required" }, 400);
-  }
-
   const ip = request.headers.get("CF-Connecting-IP");
 
-  // Resolve the conversation. A supplied id must exist — unknown ids are
-  // rejected rather than silently recreated, otherwise any client could skip
-  // bot verification by inventing an id.
-  let priorMessages: { role: "user" | "assistant"; content: string }[] = [];
-  if (conversationId) {
-    const conv = await getConversation(env.DB, conversationId);
-    if (!conv) {
-      return json({ error: "Unknown conversation. Please start a new chat." }, 404);
-    }
-    priorMessages = conv.messages;
-  }
+  // --- Bot gate (skipped when the Turnstile secret is not configured) ---
+  // The browser owns the history, so we can't trust its shape to tell a first
+  // turn from a continuation. Instead: a valid signed continuation token proves
+  // this reader already passed Turnstile recently; otherwise we require a fresh
+  // challenge. On success we always mint a rolling token to hand back.
+  let continuationToken: string | undefined;
+  if (env.TURNSTILE_SECRET_KEY) {
+    const cont =
+      typeof body.continuationToken === "string" ? body.continuationToken : "";
+    const isContinuation =
+      !!cont &&
+      (await verifyContinuationToken(cont, env.TURNSTILE_SECRET_KEY, { ip }));
 
-  // --- Turnstile bot verification (skipped when secret is not configured) ---
-  // Only required when starting a new conversation; messages in an existing
-  // conversation already passed the challenge (tokens are single-use anyway)
-  // and are bounded by the per-conversation cap below.
-  if (env.TURNSTILE_SECRET_KEY && !conversationId) {
-    const cfToken =
-      typeof body.cfTurnstileToken === "string" ? body.cfTurnstileToken : "";
-    if (!cfToken) {
-      // The code tells the client to run the challenge and retry once.
-      return json(
-        { error: "Bot verification token is missing.", code: "turnstile_required" },
-        403,
-      );
+    if (!isContinuation) {
+      const cfToken =
+        typeof body.cfTurnstileToken === "string" ? body.cfTurnstileToken : "";
+      if (!cfToken) {
+        // The code tells the client to run the challenge and retry once.
+        return json(
+          { error: "Bot verification token is missing.", code: "turnstile_required" },
+          403,
+        );
+      }
+      const outcome = await verifyTurnstileToken(cfToken, env.TURNSTILE_SECRET_KEY, ip);
+      if (outcome === "fail") {
+        return json(
+          { error: "Bot verification failed.", code: "turnstile_failed" },
+          403,
+        );
+      }
+      if (outcome === "unavailable") {
+        // Fail open: a Cloudflare hiccup must not block real users.
+        console.warn("[philip] Turnstile siteverify unavailable, allowing request");
+      }
     }
-    const outcome = await verifyTurnstileToken(cfToken, env.TURNSTILE_SECRET_KEY, ip);
-    if (outcome === "fail") {
-      return json(
-        { error: "Bot verification failed.", code: "turnstile_failed" },
-        403,
-      );
-    }
-    if (outcome === "unavailable") {
-      // Fail open: a Cloudflare hiccup must not block real users.
-      console.warn("[philip] Turnstile siteverify unavailable, allowing request");
-    }
+
+    continuationToken = await mintContinuationToken(env.TURNSTILE_SECRET_KEY, { ip });
   }
 
   // --- Usage caps (hard backstop, independent of Turnstile) ---
@@ -115,54 +109,43 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     parsePositiveInt(env.MAX_MESSAGES_PER_IP_PER_DAY) ??
     DEFAULT_LIMITS.maxMessagesPerIpPerDay;
 
-  const userTurns = priorMessages.filter((m) => m.role === "user").length;
-  if (userTurns >= maxPerConversation) {
+  const userTurns = history.filter((m) => m.role === "user").length;
+  if (userTurns > maxPerConversation) {
     return json(
       { error: "This conversation has reached its message limit. Please start a new chat." },
       429,
     );
   }
 
-  try {
-    const ipUsage = await recordIpUsage(env.DB, ip, maxPerIpPerDay);
-    if (!ipUsage.allowed) {
-      console.warn(`[philip] daily IP limit hit – ip=${ip} count=${ipUsage.count}`);
-      return json(
-        { error: "Daily message limit reached. Please come back tomorrow." },
-        429,
-      );
+  if (env.DB) {
+    try {
+      const ipUsage = await recordIpUsage(env.DB, ip, maxPerIpPerDay);
+      if (!ipUsage.allowed) {
+        console.warn(`[philip] daily IP limit hit – ip=${ip} count=${ipUsage.count}`);
+        return json(
+          { error: "Daily message limit reached. Please come back tomorrow." },
+          429,
+        );
+      }
+    } catch (e) {
+      // Fail open, e.g. when the migration has not been applied to this DB yet.
+      console.error("[philip] IP usage tracking failed, allowing request", e);
     }
-  } catch (e) {
-    // Fail open, e.g. when migration 0002 has not been applied to this DB yet.
-    console.error("[philip] IP usage tracking failed, allowing request", e);
   }
 
-  const convId = conversationId ?? (await createConversation(env.DB));
-  await appendMessage(env.DB, convId, "user", userMessage);
-
-  const historyForLLM = [...priorMessages, { role: "user" as const, content: userMessage }];
-
   console.log(
-    `[philip] chat request – model=${model} conv=${convId} turns=${historyForLLM.length} lang=${lang}`,
+    `[philip] chat request – model=${model} turns=${history.length} lang=${lang}`,
   );
 
   const { response, pump } = streamChatResponse({
-    history: historyForLLM,
+    history,
     apiKey: env.OPENROUTER_API_KEY,
     model,
     assetFetch: (path) => env.ASSETS.fetch(new URL(path, request.url)),
     referer: new URL(request.url).origin,
     title: "Philip",
-    conversationId: convId,
     lang,
-    onAssistantFinal: (text: string) => {
-      const t = text?.trim();
-      if (!t) return Promise.resolve();
-      // Awaited by the pump before "done" is sent
-      return appendMessage(env.DB, convId, "assistant", t).catch((e) =>
-        console.error("[philip] failed to persist assistant message", e),
-      );
-    },
+    continuationToken,
   });
 
   context.waitUntil(

@@ -1,9 +1,16 @@
 # Philip — Setup & Development
 
-Philip's MVP is a website: a static frontend (`public/`) plus one Cloudflare
-Pages Function (`functions/api/chat.ts`) that talks to OpenRouter and grounds
-every quotation in the **bundled World English Bible** (`public/bible/web/*.json`)
+Philip's MVP is a website: a static frontend (`public/`) plus a few Cloudflare
+Pages Functions (`functions/api/*`) that talk to OpenRouter and ground every
+quotation in the **bundled World English Bible** (`public/bible/web/*.json`)
 — no Bible API is called at runtime.
+
+**Conversations live in the reader's browser**, not on the server. The full
+history is kept in `localStorage` and sent with every `/api/chat` turn; the
+server persists no conversation content. The only exception is the **explicit,
+opt-in "share"** action (`POST /api/share`), which stores a snapshot the reader
+deliberately chose to publish and returns a short, expiring link
+(`/?c=<id>` → `GET /api/share/:id`). Snapshots expire after 30 days.
 
 ## Prerequisites
 
@@ -48,22 +55,30 @@ MAX_MESSAGES_PER_IP_PER_DAY=300            # optional; per-IP daily request cap
 credits, so it is protected by two independent layers:
 
 1. **[Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/)** —
-   gates the *creation* of new conversations. The first message is sent
+   gates the *first turn* of a conversation. The first message is sent
    immediately without waiting for Turnstile; if the server answers 403
    `turnstile_required`, the client runs the challenge invisibly
    (`data-execution="execute"` + `data-appearance="interaction-only"`) and
    retries once. The widget never blocks page load or sending, and only
-   becomes visible if Cloudflare decides interaction is needed. The server
-   rejects new conversations without a valid token (when the secret is
-   configured), and **rejects unknown conversation ids** (no silent
-   recreation), so the challenge can't be bypassed by inventing an id.
-   Verification *fails open* if Cloudflare's siteverify itself is unreachable
-   — a Turnstile outage must not take the chat down.
+   becomes visible if Cloudflare decides interaction is needed.
+
+   Because the browser now owns the history, the server can't trust the
+   message list to tell a real first turn from a forged one. Instead, after a
+   successful Turnstile check the server mints a short-lived, **HMAC-signed
+   continuation token** (`src/continuation.ts`, signed with the Turnstile
+   secret, bound to the caller's IP, 6-hour rolling expiry) and returns it in
+   the `X-Continuation-Token` header. The browser echoes it on later turns, and
+   the server verifies the signature instead of inspecting the history — so the
+   challenge can't be skipped by faking a "continuation". No server-side
+   conversation state is involved. Verification *fails open* if Cloudflare's
+   siteverify itself is unreachable — a Turnstile outage must not take the chat
+   down.
 2. **D1-backed usage caps** — a hard backstop independent of Turnstile:
    - per conversation: max user messages (default **200**, override with
-     `MAX_MESSAGES_PER_CONVERSATION`)
+     `MAX_MESSAGES_PER_CONVERSATION`), derived from the submitted history
    - per IP per UTC day: max chat requests (default **300**, override with
-     `MAX_MESSAGES_PER_IP_PER_DAY`)
+     `MAX_MESSAGES_PER_IP_PER_DAY`) — the true, non-spoofable ceiling, shared by
+     `/api/chat` and `/api/share`
 
    Exceeding either returns HTTP 429 with a friendly message. The counters
    live in the `ip_daily_usage` table (`migrations/0002_ip_daily_usage.sql`).
@@ -99,9 +114,9 @@ npx wrangler d1 migrations apply philip-db-preview --remote --env preview
 ### Testing it on a preview deployment
 
 - With the Preview secret set, open the preview URL, send a first message —
-  it should just work (invisible challenge). `POST /api/chat` without a token
-  (e.g. via `curl`) must return **403**; with an invented `conversationId`
-  it must return **404**.
+  it should just work (invisible challenge). A first-turn `POST /api/chat`
+  without a token or a valid continuation token (e.g. via `curl`) must return
+  **403** `turnstile_required`.
 - To see the 429 path without sending hundreds of messages, temporarily set
   `MAX_MESSAGES_PER_IP_PER_DAY=3` as a **Preview** environment variable and
   redeploy.
@@ -158,8 +173,8 @@ npm run test:all         # everything
 
 - **Backend unit** (`test/unit/*.ts`): reference parser, passage lookup against
   the real bundled JSON, the OpenRouter tool loop (with canned SSE streams), the
-  SSE handler, and the D1-backed conversation persistence layer — all with mocked
-  or in-memory dependencies, no network.
+  SSE handler, the HMAC continuation tokens, and the D1-backed shared-snapshot
+  persistence layer — all with mocked or in-memory dependencies, no network.
 - **Frontend unit** (`test/unit/frontend/*.js`, jsdom): state reducer, markdown
   rendering + HTML sanitization, and the SSE client.
 - **Integration** (`test/integration/*.ts`): real OpenRouter streaming, and the
@@ -169,9 +184,12 @@ npm run test:all         # everything
 
 ## Local Database (D1)
 
-Philip stores conversation history in Cloudflare D1 (see the `[[d1_databases]]`
-binding in `wrangler.toml`). The binding appears as `env.DB` inside Pages
-Functions.
+Philip does **not** store conversation history server-side — conversations live
+in the reader's browser. D1 (see the `[[d1_databases]]` binding in
+`wrangler.toml`, exposed as `env.DB`) holds only two things: the per-IP/day rate
+limit counters (`ip_daily_usage`) and the **explicit, opt-in share snapshots**
+(`shared_conversations`, which expire). If `env.DB` is unavailable, chat still
+works (rate limiting fails open) and only sharing is disabled.
 
 ### Local Development (`npm run dev`)
 
@@ -192,13 +210,13 @@ Query and inspect it with the Wrangler CLI (always use `--local`):
 npx wrangler d1 execute philip-db --local \
   --command "SELECT name FROM sqlite_master WHERE type='table';"
 
-# See recent conversations
+# See recent share snapshots
 npx wrangler d1 execute philip-db --local \
-  --command "SELECT id, created_at FROM conversations ORDER BY created_at DESC LIMIT 5;"
+  --command "SELECT id, created_at, expires_at FROM shared_conversations ORDER BY created_at DESC LIMIT 5;"
 
-# Inspect messages for a specific conversation
+# Inspect today's per-IP usage counters
 npx wrangler d1 execute philip-db --local \
-  --command "SELECT * FROM messages WHERE conversation_id = '4SoKx0FUL' ORDER BY created_at;"
+  --command "SELECT * FROM ip_daily_usage ORDER BY day DESC LIMIT 10;"
 
 # Re-apply migrations to the local DB
 npx wrangler d1 migrations apply philip-db --local
@@ -214,9 +232,9 @@ rm -rf .wrangler/state/v3/d1/
 
 Backend unit tests that exercise the database layer (`test/unit/db.test.ts`)
 use a **fresh in-memory D1** (via Miniflare with `d1Persist: false`). Before
-the tests run, the exact `migrations/0001_initial.sql` is applied, so the tests
-validate against the real production schema, constraints (CHECK, FOREIGN KEY),
-AUTOINCREMENT ordering, etc.
+the tests run, all `migrations/*.sql` are applied in order, so the tests
+validate against the real production schema (the `shared_conversations` and
+`ip_daily_usage` tables), constraints, and result shapes.
 
 - No files are written to disk.
 - Each test file / suite gets its own isolated DB instance.

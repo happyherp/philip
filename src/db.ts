@@ -1,22 +1,31 @@
-// Server-side persistence for conversations using Cloudflare D1.
-// The interface is small so the same ideas can be reused for WhatsApp sessions later.
+// Server-side persistence for *shared* conversations using Cloudflare D1.
+//
+// Philip no longer stores conversations automatically — the working
+// conversation lives in the reader's browser (localStorage). The server only
+// ever holds snapshots the user explicitly chose to share via "Share", and
+// those expire. This keeps message content off the server unless the reader
+// deliberately publishes a single conversation.
 
-export interface StoredMessage {
+export interface SharedMessage {
   role: "user" | "assistant";
   content: string;
 }
 
-export interface Conversation {
+export interface SharedConversation {
   id: string;
   createdAt: number;
-  updatedAt: number;
-  messages: StoredMessage[];
+  expiresAt: number;
+  lang: string;
+  messages: SharedMessage[];
 }
 
 const ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
-/** Generate a short, URL-safe conversation id (no dashes). */
-export function generateConversationId(): string {
+/** Default lifetime of a share link: 30 days. */
+export const DEFAULT_SHARE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** Generate a short, URL-safe share id (no dashes). */
+export function generateShareId(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(9));
   let id = "";
   for (const b of bytes) {
@@ -25,73 +34,78 @@ export function generateConversationId(): string {
   return id;
 }
 
-/** Create a new empty conversation and return its id. */
-export async function createConversation(db: D1Database): Promise<string> {
-  const id = generateConversationId();
+/** Keep only well-formed user/assistant turns. */
+function sanitizeMessages(raw: unknown): SharedMessage[] {
+  if (!Array.isArray(raw)) return [];
+  const out: SharedMessage[] = [];
+  for (const m of raw) {
+    if (!m || typeof m !== "object") continue;
+    const role = (m as any).role;
+    const content = (m as any).content;
+    if ((role === "user" || role === "assistant") && typeof content === "string") {
+      out.push({ role, content });
+    }
+  }
+  return out;
+}
+
+/**
+ * Store a conversation snapshot and return its share id. The snapshot is frozen
+ * (a JSON blob), so continuing the conversation in the browser never mutates it.
+ */
+export async function createShare(
+  db: D1Database,
+  messages: unknown,
+  lang: string,
+  ttlMs: number = DEFAULT_SHARE_TTL_MS,
+): Promise<{ id: string; expiresAt: number }> {
+  const id = generateShareId();
   const now = Date.now();
+  const expiresAt = now + ttlMs;
+  const data = JSON.stringify(sanitizeMessages(messages));
   await db
     .prepare(
-      "INSERT INTO conversations (id, created_at, updated_at) VALUES (?, ?, ?)",
+      "INSERT INTO shared_conversations (id, data, lang, created_at, expires_at) VALUES (?, ?, ?, ?, ?)",
     )
-    .bind(id, now, now)
+    .bind(id, data, lang, now, expiresAt)
     .run();
-  return id;
+  return { id, expiresAt };
 }
 
-/** Append a single message and bump the conversation updated_at. */
-export async function appendMessage(
+/** Load a shared conversation. Returns null if it does not exist or has expired. */
+export async function getShare(
   db: D1Database,
-  conversationId: string,
-  role: "user" | "assistant",
-  content: string,
-): Promise<void> {
-  const now = Date.now();
-  await db.batch([
-    db
-      .prepare(
-        "INSERT INTO messages (conversation_id, role, content, created_at) VALUES (?, ?, ?, ?)",
-      )
-      .bind(conversationId, role, content, now),
-    db
-      .prepare("UPDATE conversations SET updated_at = ? WHERE id = ?")
-      .bind(now, conversationId),
-  ]);
-}
-
-/** Load all messages for a conversation, ordered by time. */
-export async function getConversationMessages(
-  db: D1Database,
-  conversationId: string,
-): Promise<StoredMessage[]> {
-  const res = await db
+  id: string,
+  now: number = Date.now(),
+): Promise<SharedConversation | null> {
+  const row = await db
     .prepare(
-      "SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY created_at ASC, id ASC",
+      "SELECT id, data, lang, created_at as createdAt, expires_at as expiresAt FROM shared_conversations WHERE id = ?",
     )
-    .bind(conversationId)
-    .all<{ role: "user" | "assistant"; content: string }>();
+    .bind(id)
+    .first<{
+      id: string;
+      data: string;
+      lang: string;
+      createdAt: number;
+      expiresAt: number;
+    }>();
 
-  return (res.results ?? []).map((r) => ({ role: r.role, content: r.content }));
-}
+  if (!row) return null;
+  if (row.expiresAt <= now) return null;
 
-/** Load full conversation (metadata + messages). Returns null if not found. */
-export async function getConversation(
-  db: D1Database,
-  conversationId: string,
-): Promise<Conversation | null> {
-  const conv = await db
-    .prepare(
-      "SELECT id, created_at as createdAt, updated_at as updatedAt FROM conversations WHERE id = ?",
-    )
-    .bind(conversationId)
-    .first<{ id: string; createdAt: number; updatedAt: number }>();
+  let messages: SharedMessage[] = [];
+  try {
+    messages = sanitizeMessages(JSON.parse(row.data));
+  } catch {
+    messages = [];
+  }
 
-  if (!conv) return null;
-
-  const messages = await getConversationMessages(db, conversationId);
   return {
-    id: conv.id,
-    createdAt: conv.createdAt,
-    updatedAt: conv.updatedAt,
+    id: row.id,
+    createdAt: row.createdAt,
+    expiresAt: row.expiresAt,
+    lang: row.lang,
     messages,
   };
 }

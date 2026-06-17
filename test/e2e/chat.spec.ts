@@ -121,6 +121,56 @@ test.describe("text chat", () => {
     await expect(popup).toHaveCount(0);
   });
 
+  test("conversation is restored from the browser after a reload", async ({
+    page,
+  }) => {
+    await mockChatStream(page, ["Peace ", "be with you."]);
+    await page.goto("/");
+
+    await page.locator("#input").fill("Hello Philip");
+    await page.locator("#send").click();
+    await expect(page.locator(".msg-assistant .msg-body").last()).toContainText(
+      "Peace be with you.",
+    );
+
+    // Reload with no ?c= param — the conversation must come back from localStorage,
+    // not the server (nothing is persisted server-side).
+    await page.reload();
+    await expect(page.locator(".msg-user .msg-body").last()).toHaveText(
+      "Hello Philip",
+    );
+    await expect(page.locator(".msg-assistant .msg-body").last()).toContainText(
+      "Peace be with you.",
+    );
+  });
+
+  test("share posts a snapshot and confirms with the user", async ({ page }) => {
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+    await mockChatStream(page, ["A reply."]);
+    let sharedBody: any = null;
+    await page.route("/api/share", async (route) => {
+      sharedBody = JSON.parse(route.request().postData() || "{}");
+      await route.fulfill({
+        status: 201,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: "abc123", url: "https://example.test/?c=abc123" }),
+      });
+    });
+
+    await page.goto("/");
+    await page.locator("#input").fill("Share this");
+    await page.locator("#send").click();
+    await expect(page.locator(".msg-assistant .msg-body").last()).toContainText(
+      "A reply.",
+    );
+
+    await page.locator("#share-chat").click();
+    // The button flashes a confirmation, and the snapshot carried the history.
+    await expect(page.locator("#share-chat")).toHaveText("link copied!");
+    expect(sharedBody.messages.length).toBeGreaterThanOrEqual(2);
+    expect(sharedBody.messages[0]).toEqual({ role: "user", content: "Share this" });
+  });
+
   test("a wrong excerpt shows a BAD QUOTATION marker", async ({ page }) => {
     await mockChatStream(page, [
       'He says {{q John 8:32 @web "the truth will set you free"}} plainly.',
