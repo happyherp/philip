@@ -62,13 +62,6 @@ credits, so it is bounded by **D1-backed usage caps**:
 Exceeding either returns HTTP 429 with a friendly message. The counters live in
 the `ip_daily_usage` table (`migrations/0002_ip_daily_usage.sql`).
 
-> A Cloudflare Turnstile bot challenge previously gated the first turn, but a
-> Managed widget kept escalating to an interactive check the invisible flow
-> couldn't complete, locking real readers out — so it was removed. The usage
-> caps above are now the sole guard. If a stronger bot gate is needed later,
-> add a Turnstile widget configured in **Invisible** mode (Managed mode is what
-> caused the outage).
-
 ### Setup (one-time)
 
 Apply the rate-limit migration to both remote databases:

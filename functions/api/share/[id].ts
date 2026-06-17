@@ -3,6 +3,7 @@
 // Returns 404 if the snapshot does not exist or has expired.
 
 import { getShare } from "../../../src/db.ts";
+import { json } from "../../../src/http.ts";
 
 interface Env {
   DB: D1Database;
@@ -35,10 +36,3 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     200,
   );
 };
-
-function json(obj: unknown, status: number): Response {
-  return new Response(JSON.stringify(obj), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
-}

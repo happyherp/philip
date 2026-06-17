@@ -11,6 +11,7 @@
 
 import { streamChatResponse, sanitizeHistory } from "../../src/chat.ts";
 import { DEFAULT_LIMITS, recordIpUsage } from "../../src/rate-limit.ts";
+import { clientIp, json, parsePositiveInt, resolveLang } from "../../src/http.ts";
 
 interface Env {
   ASSETS: Fetcher;
@@ -54,13 +55,10 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     request.headers.get("Accept-Language"),
   );
 
-  const ip = request.headers.get("CF-Connecting-IP");
+  const ip = clientIp(request);
 
-  // --- Usage caps (the primary abuse backstop) ---
-  // Bot protection used to be a Turnstile challenge here, but a Managed widget
-  // kept escalating to an interactive check the invisible flow couldn't complete,
-  // locking real readers out. The D1-backed per-conversation and per-IP/day caps
-  // below are now the sole guard against runaway usage.
+  // --- Usage caps: the per-conversation and per-IP/day backstops that bound
+  // how much this public, unauthenticated endpoint can spend on LLM calls. ---
   const maxPerConversation =
     parsePositiveInt(env.MAX_MESSAGES_PER_CONVERSATION) ??
     DEFAULT_LIMITS.maxMessagesPerConversation;
@@ -114,32 +112,3 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   );
   return response;
 };
-
-function json(obj: unknown, status: number): Response {
-  return new Response(JSON.stringify(obj), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
-}
-
-function parsePositiveInt(value: string | undefined): number | undefined {
-  if (!value) return undefined;
-  const n = Number.parseInt(value, 10);
-  return Number.isFinite(n) && n > 0 ? n : undefined;
-}
-
-const SUPPORTED_LANGS = new Set(["en", "es", "de"]);
-
-function resolveLang(bodyLang: string | null, acceptLanguage: string | null): string {
-  if (bodyLang) {
-    const base = bodyLang.split("-")[0].toLowerCase();
-    if (SUPPORTED_LANGS.has(base)) return base;
-  }
-  if (acceptLanguage) {
-    for (const part of acceptLanguage.split(",")) {
-      const base = part.split(";")[0].trim().split("-")[0].toLowerCase();
-      if (SUPPORTED_LANGS.has(base)) return base;
-    }
-  }
-  return "en";
-}
