@@ -12,10 +12,11 @@
 import {
   appendMessage,
   createConversation,
-  getConversationMessages,
+  getConversation,
 } from "../../src/db.ts";
 import { streamChatResponse } from "../../src/chat.ts";
 import { verifyTurnstileToken } from "../../src/turnstile.ts";
+import { DEFAULT_LIMITS, recordIpUsage } from "../../src/rate-limit.ts";
 
 interface Env {
   ASSETS: Fetcher;
@@ -23,6 +24,8 @@ interface Env {
   OPENROUTER_API_KEY: string;
   OPENROUTER_MODEL?: string;
   TURNSTILE_SECRET_KEY?: string;
+  MAX_MESSAGES_PER_CONVERSATION?: string;
+  MAX_MESSAGES_PER_IP_PER_DAY?: string;
 }
 
 const DEFAULT_MODEL = "anthropic/claude-sonnet-4";
@@ -47,15 +50,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     return json({ error: "Invalid JSON body." }, 400);
   }
 
-  // --- Turnstile bot verification (skipped when secret is not configured) ---
-  // Only require verification for the first message of a new conversation.
-  // Once the user passes the challenge, subsequent messages in the same
-  // conversation are trusted (the token is single-use anyway).
   const conversationId =
     typeof body.conversationId === "string" ? body.conversationId : undefined;
-
-  // Turnstile disabled — re-enable once the widget issue is resolved.
-  // if (env.TURNSTILE_SECRET_KEY && !conversationId) { ... }
 
   const userMessage =
     typeof body.message === "string" ? body.message.trim() : "";
@@ -70,27 +66,79 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     return json({ error: "message is required" }, 400);
   }
 
-  // Resolve or create conversation, load prior turns for the LLM context.
-  // We trust an explicit conversationId from the client (e.g. from ?c= or from previous header).
-  // Only auto-create when the client did not supply one.
-  let convId = conversationId;
+  const ip = request.headers.get("CF-Connecting-IP");
+
+  // Resolve the conversation. A supplied id must exist — unknown ids are
+  // rejected rather than silently recreated, otherwise any client could skip
+  // bot verification by inventing an id.
   let priorMessages: { role: "user" | "assistant"; content: string }[] = [];
-
-  if (convId) {
-    priorMessages = await getConversationMessages(env.DB, convId);
-  } else {
-    convId = await createConversation(env.DB);
+  if (conversationId) {
+    const conv = await getConversation(env.DB, conversationId);
+    if (!conv) {
+      return json({ error: "Unknown conversation. Please start a new chat." }, 404);
+    }
+    priorMessages = conv.messages;
   }
 
-  // Persist the user turn. If the provided id was bogus (no parent row), fall back to a fresh convo.
+  // --- Turnstile bot verification (skipped when secret is not configured) ---
+  // Only required when starting a new conversation; messages in an existing
+  // conversation already passed the challenge (tokens are single-use anyway)
+  // and are bounded by the per-conversation cap below.
+  if (env.TURNSTILE_SECRET_KEY && !conversationId) {
+    const cfToken =
+      typeof body.cfTurnstileToken === "string" ? body.cfTurnstileToken : "";
+    if (!cfToken) {
+      // The code tells the client to run the challenge and retry once.
+      return json(
+        { error: "Bot verification token is missing.", code: "turnstile_required" },
+        403,
+      );
+    }
+    const outcome = await verifyTurnstileToken(cfToken, env.TURNSTILE_SECRET_KEY, ip);
+    if (outcome === "fail") {
+      return json(
+        { error: "Bot verification failed.", code: "turnstile_failed" },
+        403,
+      );
+    }
+    if (outcome === "unavailable") {
+      // Fail open: a Cloudflare hiccup must not block real users.
+      console.warn("[philip] Turnstile siteverify unavailable, allowing request");
+    }
+  }
+
+  // --- Usage caps (hard backstop, independent of Turnstile) ---
+  const maxPerConversation =
+    parsePositiveInt(env.MAX_MESSAGES_PER_CONVERSATION) ??
+    DEFAULT_LIMITS.maxMessagesPerConversation;
+  const maxPerIpPerDay =
+    parsePositiveInt(env.MAX_MESSAGES_PER_IP_PER_DAY) ??
+    DEFAULT_LIMITS.maxMessagesPerIpPerDay;
+
+  const userTurns = priorMessages.filter((m) => m.role === "user").length;
+  if (userTurns >= maxPerConversation) {
+    return json(
+      { error: "This conversation has reached its message limit. Please start a new chat." },
+      429,
+    );
+  }
+
   try {
-    await appendMessage(env.DB, convId, "user", userMessage);
+    const ipUsage = await recordIpUsage(env.DB, ip, maxPerIpPerDay);
+    if (!ipUsage.allowed) {
+      console.warn(`[philip] daily IP limit hit – ip=${ip} count=${ipUsage.count}`);
+      return json(
+        { error: "Daily message limit reached. Please come back tomorrow." },
+        429,
+      );
+    }
   } catch (e) {
-    console.warn("[philip] append user to provided conv failed (bad id?), creating fresh", e);
-    convId = await createConversation(env.DB);
-    priorMessages = [];
-    await appendMessage(env.DB, convId, "user", userMessage);
+    // Fail open, e.g. when migration 0002 has not been applied to this DB yet.
+    console.error("[philip] IP usage tracking failed, allowing request", e);
   }
+
+  const convId = conversationId ?? (await createConversation(env.DB));
+  await appendMessage(env.DB, convId, "user", userMessage);
 
   const historyForLLM = [...priorMessages, { role: "user" as const, content: userMessage }];
 
@@ -131,6 +179,12 @@ function json(obj: unknown, status: number): Response {
     status,
     headers: { "content-type": "application/json" },
   });
+}
+
+function parsePositiveInt(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const n = Number.parseInt(value, 10);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
 }
 
 const SUPPORTED_LANGS = new Set(["en", "es", "de"]);

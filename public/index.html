@@ -42,10 +42,17 @@
         autocomplete="off"
       ></textarea>
       <button id="mic" type="button" aria-label="Record voice" title="Record voice">&#127908;</button>
+      <!-- Invisible bot check: the challenge only runs when the server
+           demands verification (403 → turnstile.execute → retry) and only
+           becomes visible if Cloudflare requires user interaction. -->
       <div id="turnstile-widget" class="cf-turnstile"
            data-sitekey="0x4AAAAAADe9n8-uSsPgG9eP"
            data-callback="onTurnstileToken"
            data-error-callback="onTurnstileError"
+           data-expired-callback="onTurnstileExpired"
+           data-before-interactive-callback="onTurnstileInteractive"
+           data-execution="execute"
+           data-appearance="interaction-only"
            data-size="flexible"></div>
       <button id="send" type="submit">Send</button>
     </form>

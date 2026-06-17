@@ -170,36 +170,53 @@ async function send(text) {
   const bubble = addBubble("assistant", "");
   bubble.classList.add("thinking");
 
-  await streamChat({
-    conversationId: conversationId || undefined,
-    message: trimmed,
-    lang,
-    cfTurnstileToken: !conversationId ? turnstileToken || undefined : undefined,
-    onConversationId: (id) => {
-      if (!conversationId) {
-        conversationId = id;
-        const url = new URL(location.href);
-        url.searchParams.set("c", id);
-        history.replaceState(null, "", url.toString());
-      }
-    },
-    onLang: (newLang) => switchLang(newLang),
-    onToken: (token) => {
-      bubble.classList.remove("thinking");
-      appendToken(state, token);
-      renderMessageInto(bubble, assistant.content, { lang });
-      log.scrollTop = log.scrollHeight;
-    },
-    onError: (message) => {
-      console.error("[philip]", message);
-      bubble.classList.remove("thinking");
-      bubble.innerHTML = "";
-      const err = document.createElement("div");
-      err.className = "error";
-      err.textContent = `${t.error_prefix}${message}`;
-      bubble.appendChild(err);
-    },
-  });
+  const attempt = async (cfToken) => {
+    let failure = null;
+    await streamChat({
+      conversationId: conversationId || undefined,
+      message: trimmed,
+      lang,
+      cfTurnstileToken: cfToken || undefined,
+      onConversationId: (id) => {
+        if (!conversationId) {
+          conversationId = id;
+          const url = new URL(location.href);
+          url.searchParams.set("c", id);
+          history.replaceState(null, "", url.toString());
+        }
+      },
+      onLang: (newLang) => switchLang(newLang),
+      onToken: (token) => {
+        bubble.classList.remove("thinking");
+        appendToken(state, token);
+        renderMessageInto(bubble, assistant.content, { lang });
+        log.scrollTop = log.scrollHeight;
+      },
+      onError: (message, info) => {
+        failure = { message, code: info?.code };
+      },
+    });
+    return failure;
+  };
+
+  // Send immediately — never wait for Turnstile up front. If the server
+  // demands bot verification, run the (usually invisible) challenge and
+  // retry once with a fresh token.
+  let failure = await attempt(turnstileToken ? consumeTurnstileToken() : undefined);
+  if (failure && (failure.code === "turnstile_required" || failure.code === "turnstile_failed")) {
+    const token = await getTurnstileToken();
+    if (token) failure = await attempt(consumeTurnstileToken());
+  }
+
+  if (failure) {
+    console.error("[philip]", failure.message);
+    bubble.classList.remove("thinking");
+    bubble.innerHTML = "";
+    const err = document.createElement("div");
+    err.className = "error";
+    err.textContent = `${t.error_prefix}${failure.message}`;
+    bubble.appendChild(err);
+  }
 
   setBusy(false);
 }
@@ -223,42 +240,80 @@ input.addEventListener("keydown", (e) => {
   }
 });
 
-// --- Cloudflare Turnstile ---
-// The widget calls window.onTurnstileToken when the user passes the challenge.
-// Tokens are single-use; we reset the widget after each chat round.
-// If Turnstile fails to load (CSP, localhost, missing key) the UI unlocks
-// after a short timeout so the app remains usable.
+// --- Cloudflare Turnstile (invisible, on-demand) ---
+// The widget never blocks the UI and the happy path never waits for it:
+// messages are sent immediately, and the challenge (turnstile.execute) runs
+// only when the server answers 403 turnstile_required/_failed, after which
+// the request is retried once. The widget becomes visible only if Cloudflare
+// needs user interaction.
 let turnstileToken = null;
-let turnstileActive = false;
+let turnstileUnavailable = false;
+let turnstilePending = null; // { resolve, timer } while a challenge is running
 const turnstileWidgetEl = document.getElementById("turnstile-widget");
 
-// Turnstile disabled — do not lock the UI.
-// setBusy(true);
-const turnstileTimeout = setTimeout(() => {
-  if (!turnstileActive) {
-    // Turnstile never completed — unlock the UI and hide the widget.
-    if (turnstileWidgetEl) turnstileWidgetEl.style.display = "none";
-    setBusy(false);
-  }
-}, 5000);
+function resolveTurnstilePending(value) {
+  if (!turnstilePending) return;
+  clearTimeout(turnstilePending.timer);
+  const { resolve } = turnstilePending;
+  turnstilePending = null;
+  resolve(value);
+}
 
 window.onTurnstileToken = (token) => {
-  turnstileActive = true;
   turnstileToken = token;
-  clearTimeout(turnstileTimeout);
-  setBusy(false);
-  // Hide the widget 2 seconds after verification.
-  setTimeout(() => {
-    if (turnstileWidgetEl) turnstileWidgetEl.style.display = "none";
-  }, 2000);
+  resolveTurnstilePending(token);
 };
 
 // Called by Turnstile on explicit failure (bad sitekey, CSP block, etc.)
 window.onTurnstileError = () => {
+  turnstileUnavailable = true;
   if (turnstileWidgetEl) turnstileWidgetEl.style.display = "none";
-  clearTimeout(turnstileTimeout);
-  setBusy(false);
+  resolveTurnstilePending(null);
 };
+
+window.onTurnstileExpired = () => {
+  turnstileToken = null;
+};
+
+// The challenge turned interactive — the user may take a while, stop the clock.
+window.onTurnstileInteractive = () => {
+  if (turnstilePending) {
+    clearTimeout(turnstilePending.timer);
+    turnstilePending.timer = undefined;
+  }
+};
+
+/** Run the challenge if needed and resolve with a token, or null if unavailable. */
+function getTurnstileToken(timeoutMs = 15000) {
+  if (turnstileToken) return Promise.resolve(turnstileToken);
+  if (turnstileUnavailable || !turnstileWidgetEl || !window.turnstile) {
+    return Promise.resolve(null);
+  }
+  return new Promise((resolve) => {
+    turnstilePending = {
+      resolve,
+      timer: setTimeout(() => resolveTurnstilePending(null), timeoutMs),
+    };
+    try {
+      window.turnstile.execute(turnstileWidgetEl);
+    } catch (e) {
+      console.warn("[philip] turnstile.execute failed", e);
+      resolveTurnstilePending(null);
+    }
+  });
+}
+
+/** Tokens are single-use: hand it out once and re-arm the widget for retries. */
+function consumeTurnstileToken() {
+  const token = turnstileToken;
+  turnstileToken = null;
+  try {
+    window.turnstile?.reset(turnstileWidgetEl);
+  } catch {
+    /* widget may not be rendered (localhost, blocked script) */
+  }
+  return token;
+}
 
 const newBtn = document.getElementById("new-chat");
 if (newBtn) {

@@ -51,7 +51,31 @@ describe("streamChat", () => {
       onError,
       fetchImpl,
     });
-    expect(onError).toHaveBeenCalledWith(expect.stringContaining("500"));
+    expect(onError).toHaveBeenCalledWith(expect.stringContaining("500"), {
+      status: 500,
+      code: undefined,
+    });
+  });
+
+  it("surfaces the server's JSON error message and code on non-OK responses", async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({ error: "Bot verification token is missing.", code: "turnstile_required" }),
+          { status: 403, headers: { "content-type": "application/json" } },
+        ),
+    );
+    const onError = vi.fn();
+    await streamChat({
+      messages: [{ role: "user", content: "hi" }],
+      onToken: () => {},
+      onError,
+      fetchImpl,
+    });
+    expect(onError).toHaveBeenCalledWith("Bot verification token is missing.", {
+      status: 403,
+      code: "turnstile_required",
+    });
   });
 
   it("handles a network rejection", async () => {
