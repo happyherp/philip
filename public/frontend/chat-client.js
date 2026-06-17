@@ -2,17 +2,16 @@
 // injectable so it can be tested without a server.
 
 /**
- * Stream a chat turn.
- * Supports the new server-persisted contract (preferred) and the old full-history one.
+ * Stream a chat turn. The browser owns the conversation: the full history is
+ * sent every turn and the server persists nothing.
  *
  * @param {object} opts
- * @param {string} [opts.conversationId]
- * @param {string} [opts.message] - new style: just the latest user message
- * @param {Array<{role:string,content:string}>} [opts.messages] - legacy full history
+ * @param {Array<{role:string,content:string}>} opts.messages - full conversation history
  * @param {string} [opts.lang] - ISO 639-1 language code ("en", "es", "de")
  * @param {string} [opts.cfTurnstileToken] - Cloudflare Turnstile token for bot verification
+ * @param {string} [opts.continuationToken] - signed token proving a recent Turnstile pass
  * @param {(token: string) => void} opts.onToken
- * @param {(id: string) => void} [opts.onConversationId] - called if server returns X-Conversation-Id (new convos)
+ * @param {(token: string) => void} [opts.onContinuationToken] - called with X-Continuation-Token, to echo on later turns
  * @param {(lang: string) => void} [opts.onLang] - called when the model chooses a language/translation
  * @param {() => void} [opts.onDone]
  * @param {(message: string, info?: {status?: number, code?: string}) => void} [opts.onError]
@@ -20,22 +19,19 @@
  * @param {string} [opts.url]
  */
 export async function streamChat({
-  conversationId,
-  message,
   messages,
   lang,
   cfTurnstileToken,
+  continuationToken,
   onToken,
-  onConversationId,
+  onContinuationToken,
   onLang,
   onDone,
   onError,
   fetchImpl = fetch,
   url = "/api/chat",
 }) {
-  const body = message
-    ? { conversationId, message, lang, cfTurnstileToken }
-    : { messages, lang, cfTurnstileToken };
+  const body = { messages, lang, cfTurnstileToken, continuationToken };
 
   let res;
   try {
@@ -63,10 +59,10 @@ export async function streamChat({
     return;
   }
 
-  // New conversations (or first turn) learn their server id from the header immediately.
-  const convId = res.headers.get("x-conversation-id");
-  if (convId) {
-    onConversationId?.(convId);
+  // A signed continuation token lets later turns skip the Turnstile challenge.
+  const continuation = res.headers.get("x-continuation-token");
+  if (continuation) {
+    onContinuationToken?.(continuation);
   }
 
   const reader = res.body.getReader();

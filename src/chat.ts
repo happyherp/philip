@@ -16,12 +16,10 @@ export interface StreamChatOptions {
   fetchImpl?: typeof fetch;
   referer?: string;
   title?: string;
-  /** Called with the complete final assistant text (after tool loops) so caller can persist it. */
-  onAssistantFinal?: (text: string) => void | Promise<void>;
-  /** If set, emitted as X-Conversation-Id response header so clients can learn a newly created id immediately. */
-  conversationId?: string;
   /** ISO 639-1 language code for the reader (e.g. "en", "es", "de"). Selects system prompt and Bible translation. */
   lang?: string;
+  /** If set, emitted as the X-Continuation-Token response header so the browser can skip Turnstile on later turns. */
+  continuationToken?: string;
 }
 
 /** Keep only well-formed user/assistant turns from untrusted client input. */
@@ -65,7 +63,7 @@ export function streamChatResponse(opts: StreamChatOptions): StreamChatResult {
         await send({ error: "No message provided." });
         return;
       }
-      const finalText = await runChat(history, {
+      await runChat(history, {
         apiKey: opts.apiKey,
         model: opts.model,
         assetFetch: opts.assetFetch,
@@ -82,9 +80,6 @@ export function streamChatResponse(opts: StreamChatOptions): StreamChatResult {
           if (meta && !meta.scholarly) send({ lang: meta.lang });
         },
       });
-      if (opts.onAssistantFinal) {
-        await opts.onAssistantFinal(finalText);
-      }
       await send({ done: true });
     } catch (err) {
       await send({ error: err instanceof Error ? err.message : String(err) });
@@ -98,8 +93,8 @@ export function streamChatResponse(opts: StreamChatOptions): StreamChatResult {
     "cache-control": "no-cache",
     connection: "keep-alive",
   };
-  if (opts.conversationId) {
-    responseHeaders["x-conversation-id"] = opts.conversationId;
+  if (opts.continuationToken) {
+    responseHeaders["x-continuation-token"] = opts.continuationToken;
   }
   const response = new Response(readable, {
     headers: responseHeaders,
