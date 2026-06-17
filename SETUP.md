@@ -42,104 +42,47 @@ Local secrets live in `.dev.vars` (gitignored):
 ```
 OPENROUTER_API_KEY=sk-or-...
 OPENROUTER_MODEL=anthropic/claude-sonnet-4   # optional; any tool-calling model on OpenRouter
-TURNSTILE_SECRET_KEY=...                   # optional; enables Cloudflare Turnstile bot protection
 MAX_MESSAGES_PER_CONVERSATION=200          # optional; per-conversation user-message cap
 MAX_MESSAGES_PER_IP_PER_DAY=300            # optional; per-IP daily request cap
 ```
 
 > The model **must support tool calling** (Philip uses a `get_passage` tool).
 
-## Bot Protection (Turnstile + usage caps)
+## Abuse protection (usage caps)
 
 `/api/chat` is a public, unauthenticated endpoint that spends OpenRouter
-credits, so it is protected by two independent layers:
+credits, so it is bounded by **D1-backed usage caps**:
 
-1. **[Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/)** —
-   gates the *first turn* of a conversation. The first message is sent
-   immediately without waiting for Turnstile; if the server answers 403
-   `turnstile_required`, the client runs the challenge invisibly
-   (`data-execution="execute"` + `data-appearance="interaction-only"`) and
-   retries once. The widget never blocks page load or sending, and only
-   becomes visible if Cloudflare decides interaction is needed.
+- per conversation: max user messages (default **200**, override with
+  `MAX_MESSAGES_PER_CONVERSATION`), derived from the submitted history
+- per IP per UTC day: max chat requests (default **300**, override with
+  `MAX_MESSAGES_PER_IP_PER_DAY`) — the true, non-spoofable ceiling, shared by
+  `/api/chat` and `/api/share`
 
-   Because the browser now owns the history, the server can't trust the
-   message list to tell a real first turn from a forged one. Instead, after a
-   successful Turnstile check the server mints a short-lived, **HMAC-signed
-   continuation token** (`src/continuation.ts`, signed with the Turnstile
-   secret, bound to the caller's IP, 6-hour rolling expiry) and returns it in
-   the `X-Continuation-Token` header. The browser echoes it on later turns, and
-   the server verifies the signature instead of inspecting the history — so the
-   challenge can't be skipped by faking a "continuation". No server-side
-   conversation state is involved. Verification *fails open* if Cloudflare's
-   siteverify itself is unreachable — a Turnstile outage must not take the chat
-   down.
-2. **D1-backed usage caps** — a hard backstop independent of Turnstile:
-   - per conversation: max user messages (default **200**, override with
-     `MAX_MESSAGES_PER_CONVERSATION`), derived from the submitted history
-   - per IP per UTC day: max chat requests (default **300**, override with
-     `MAX_MESSAGES_PER_IP_PER_DAY`) — the true, non-spoofable ceiling, shared by
-     `/api/chat` and `/api/share`
+Exceeding either returns HTTP 429 with a friendly message. The counters live in
+the `ip_daily_usage` table (`migrations/0002_ip_daily_usage.sql`).
 
-   Exceeding either returns HTTP 429 with a friendly message. The counters
-   live in the `ip_daily_usage` table (`migrations/0002_ip_daily_usage.sql`).
+> A Cloudflare Turnstile bot challenge previously gated the first turn, but a
+> Managed widget kept escalating to an interactive check the invisible flow
+> couldn't complete, locking real readers out — so it was removed. The usage
+> caps above are now the sole guard. If a stronger bot gate is needed later,
+> add a Turnstile widget configured in **Invisible** mode (Managed mode is what
+> caused the outage).
 
-### Behavior per environment
+### Setup (one-time)
 
-| Environment | Turnstile | Usage caps |
-|---|---|---|
-| Production | enforced if `TURNSTILE_SECRET_KEY` is set (Pages **Production** env) | always on |
-| PR previews | enforced if `TURNSTILE_SECRET_KEY` is set in the Pages **Preview** env | always on |
-| `npm run dev` | skipped unless `TURNSTILE_SECRET_KEY` is in `.dev.vars`; the widget errors on `localhost` (unless allowlisted) and the client gracefully sends without a token | always on (local SQLite) |
-
-### Setup (one-time, Cloudflare dashboard)
-
-1. [Cloudflare dashboard](https://dash.cloudflare.com/) → **Turnstile** → your
-   widget (sitekey `0x4AAAAAADe9n8-uSsPgG9eP`, hardcoded in
-   `public/index.html`).
-2. Under **Hostname management**, make sure these are allowlisted:
-   - `philip-3jf.pages.dev` — covers production **and** all
-     `<branch>.philip-3jf.pages.dev` previews (subdomains are included)
-   - `localhost` — optional, lets the real widget run during local dev
-3. Set the secret for **both** Pages environments (the CLI can only target
-   production, so use the dashboard): **Workers & Pages → philip → Settings →
-   Variables and Secrets** → add `TURNSTILE_SECRET_KEY` to **Production** and
-   **Preview**.
-4. Apply the rate-limit migration to both remote databases:
+Apply the rate-limit migration to both remote databases:
 
 ```bash
 npx wrangler d1 migrations apply philip-db --remote
 npx wrangler d1 migrations apply philip-db-preview --remote --env preview
 ```
 
-### Testing it on a preview deployment
+### Testing the 429 path on a preview deployment
 
-- With the Preview secret set, open the preview URL, send a first message —
-  it should just work (invisible challenge). A first-turn `POST /api/chat`
-  without a token or a valid continuation token (e.g. via `curl`) must return
-  **403** `turnstile_required`.
-- To see the 429 path without sending hundreds of messages, temporarily set
-  `MAX_MESSAGES_PER_IP_PER_DAY=3` as a **Preview** environment variable and
-  redeploy.
-
-### Testing keys (local dev)
-
-Cloudflare provides test keys that always pass/fail without real challenges:
-
-| Purpose | Site Key | Secret Key |
-|---|---|---|
-| Always passes | `1x00000000000000000000AA` | `1x0000000000000000000000000000000AA` |
-| Always blocks | `2x00000000000000000000AB` | `2x0000000000000000000000000000000AB` |
-| Forces interactive | `3x00000000000000000000FF` | — |
-
-To exercise the full flow locally, put the "always passes" secret in
-`.dev.vars` and temporarily swap the sitekey in `index.html`. Without
-`TURNSTILE_SECRET_KEY` in `.dev.vars`, the server skips verification and
-`npm run dev` works out of the box.
-
-> Note: secret-side siteverify errors (e.g. `invalid-input-secret`) fail
-> **open** by design — a misconfigured secret must not block every user. The
-> reliable way to see a 403 locally is to set any `TURNSTILE_SECRET_KEY` and
-> POST to `/api/chat` without a `cfTurnstileToken`.
+To see the cap without sending hundreds of messages, temporarily set
+`MAX_MESSAGES_PER_IP_PER_DAY=3` as a **Preview** environment variable and
+redeploy.
 
 ## Regenerate bundled assets (optional)
 
@@ -173,8 +116,8 @@ npm run test:all         # everything
 
 - **Backend unit** (`test/unit/*.ts`): reference parser, passage lookup against
   the real bundled JSON, the OpenRouter tool loop (with canned SSE streams), the
-  SSE handler, the HMAC continuation tokens, and the D1-backed shared-snapshot
-  persistence layer — all with mocked or in-memory dependencies, no network.
+  SSE handler, and the D1-backed usage caps and shared-snapshot persistence
+  layer — all with mocked or in-memory dependencies, no network.
 - **Frontend unit** (`test/unit/frontend/*.js`, jsdom): state reducer, markdown
   rendering + HTML sanitization, and the SSE client.
 - **Integration** (`test/integration/*.ts`): real OpenRouter streaming, and the

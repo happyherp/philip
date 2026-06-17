@@ -12,7 +12,6 @@
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Lora:ital@0;1&family=Cormorant+Garamond:ital@0;1&family=UnifrakturMaguntia&family=EB+Garamond:ital@0;1&family=Gentium+Book+Plus&family=David+Libre&family=Cardo:ital@0;1&display=swap"
     />
-    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
   </head>
   <body>
     <header class="topbar">
@@ -43,18 +42,6 @@
         autocomplete="off"
       ></textarea>
       <button id="mic" type="button" aria-label="Record voice" title="Record voice">&#127908;</button>
-      <!-- Invisible bot check: the challenge only runs when the server
-           demands verification (403 → turnstile.execute → retry) and only
-           becomes visible if Cloudflare requires user interaction. -->
-      <div id="turnstile-widget" class="cf-turnstile"
-           data-sitekey="0x4AAAAAADe9n8-uSsPgG9eP"
-           data-callback="onTurnstileToken"
-           data-error-callback="onTurnstileError"
-           data-expired-callback="onTurnstileExpired"
-           data-before-interactive-callback="onTurnstileInteractive"
-           data-execution="execute"
-           data-appearance="interaction-only"
-           data-size="flexible"></div>
       <button id="send" type="submit">Send</button>
     </form>
 

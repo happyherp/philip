@@ -61,8 +61,8 @@ describe("streamChat", () => {
     const fetchImpl = vi.fn(
       async () =>
         new Response(
-          JSON.stringify({ error: "Bot verification token is missing.", code: "turnstile_required" }),
-          { status: 403, headers: { "content-type": "application/json" } },
+          JSON.stringify({ error: "Daily message limit reached.", code: "rate_limited" }),
+          { status: 429, headers: { "content-type": "application/json" } },
         ),
     );
     const onError = vi.fn();
@@ -72,9 +72,9 @@ describe("streamChat", () => {
       onError,
       fetchImpl,
     });
-    expect(onError).toHaveBeenCalledWith("Bot verification token is missing.", {
-      status: 403,
-      code: "turnstile_required",
+    expect(onError).toHaveBeenCalledWith("Daily message limit reached.", {
+      status: 429,
+      code: "rate_limited",
     });
   });
 

@@ -18,8 +18,6 @@ export interface StreamChatOptions {
   title?: string;
   /** ISO 639-1 language code for the reader (e.g. "en", "es", "de"). Selects system prompt and Bible translation. */
   lang?: string;
-  /** If set, emitted as the X-Continuation-Token response header so the browser can skip Turnstile on later turns. */
-  continuationToken?: string;
 }
 
 /** Keep only well-formed user/assistant turns from untrusted client input. */
@@ -88,16 +86,12 @@ export function streamChatResponse(opts: StreamChatOptions): StreamChatResult {
     }
   })();
 
-  const responseHeaders: Record<string, string> = {
-    "content-type": "text/event-stream; charset=utf-8",
-    "cache-control": "no-cache",
-    connection: "keep-alive",
-  };
-  if (opts.continuationToken) {
-    responseHeaders["x-continuation-token"] = opts.continuationToken;
-  }
   const response = new Response(readable, {
-    headers: responseHeaders,
+    headers: {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-cache",
+      connection: "keep-alive",
+    },
   });
 
   return { response, pump };
