@@ -38,7 +38,8 @@ body {
   color: var(--accent);
   display: inline;
 }
-.topbar #new-chat {
+.topbar #new-chat,
+.topbar #share-chat {
   margin-left: 0.6em;
   font-size: 0.65rem;
   vertical-align: middle;
@@ -48,7 +49,8 @@ body {
   padding: 1px 5px;
   border-radius: 3px;
 }
-.topbar #new-chat:hover {
+.topbar #new-chat:hover,
+.topbar #share-chat:hover {
   color: var(--accent);
   border-color: var(--accent-soft);
 }
