@@ -8,10 +8,7 @@
  * @param {object} opts
  * @param {Array<{role:string,content:string}>} opts.messages - full conversation history
  * @param {string} [opts.lang] - ISO 639-1 language code ("en", "es", "de")
- * @param {string} [opts.cfTurnstileToken] - Cloudflare Turnstile token for bot verification
- * @param {string} [opts.continuationToken] - signed token proving a recent Turnstile pass
  * @param {(token: string) => void} opts.onToken
- * @param {(token: string) => void} [opts.onContinuationToken] - called with X-Continuation-Token, to echo on later turns
  * @param {(lang: string) => void} [opts.onLang] - called when the model chooses a language/translation
  * @param {() => void} [opts.onDone]
  * @param {(message: string, info?: {status?: number, code?: string}) => void} [opts.onError]
@@ -21,17 +18,14 @@
 export async function streamChat({
   messages,
   lang,
-  cfTurnstileToken,
-  continuationToken,
   onToken,
-  onContinuationToken,
   onLang,
   onDone,
   onError,
   fetchImpl = fetch,
   url = "/api/chat",
 }) {
-  const body = { messages, lang, cfTurnstileToken, continuationToken };
+  const body = { messages, lang };
 
   let res;
   try {
@@ -57,12 +51,6 @@ export async function streamChat({
     }
     onError?.(message, { status: res.status, code });
     return;
-  }
-
-  // A signed continuation token lets later turns skip the Turnstile challenge.
-  const continuation = res.headers.get("x-continuation-token");
-  if (continuation) {
-    onContinuationToken?.(continuation);
   }
 
   const reader = res.body.getReader();

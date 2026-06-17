@@ -3,26 +3,21 @@
 // transport-agnostic chat logic in src/chat.ts.
 //
 // Contract (the browser owns history):
-//   POST { messages: [{ role, content }], lang?, cfTurnstileToken? }
+//   POST { messages: [{ role, content }], lang? }
 //   - The full conversation lives in the reader's browser and is sent each turn.
 //   - The server never persists conversation content (see /api/share for the
 //     explicit, opt-in sharing path).
 //   - Runs Philip and streams tokens back as SSE.
 
 import { streamChatResponse, sanitizeHistory } from "../../src/chat.ts";
-import { verifyTurnstileToken } from "../../src/turnstile.ts";
-import {
-  mintContinuationToken,
-  verifyContinuationToken,
-} from "../../src/continuation.ts";
 import { DEFAULT_LIMITS, recordIpUsage } from "../../src/rate-limit.ts";
+import { clientIp, json, parsePositiveInt, resolveLang } from "../../src/http.ts";
 
 interface Env {
   ASSETS: Fetcher;
   DB: D1Database;
   OPENROUTER_API_KEY: string;
   OPENROUTER_MODEL?: string;
-  TURNSTILE_SECRET_KEY?: string;
   MAX_MESSAGES_PER_CONVERSATION?: string;
   MAX_MESSAGES_PER_IP_PER_DAY?: string;
 }
@@ -60,48 +55,10 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     request.headers.get("Accept-Language"),
   );
 
-  const ip = request.headers.get("CF-Connecting-IP");
+  const ip = clientIp(request);
 
-  // --- Bot gate (skipped when the Turnstile secret is not configured) ---
-  // The browser owns the history, so we can't trust its shape to tell a first
-  // turn from a continuation. Instead: a valid signed continuation token proves
-  // this reader already passed Turnstile recently; otherwise we require a fresh
-  // challenge. On success we always mint a rolling token to hand back.
-  let continuationToken: string | undefined;
-  if (env.TURNSTILE_SECRET_KEY) {
-    const cont =
-      typeof body.continuationToken === "string" ? body.continuationToken : "";
-    const isContinuation =
-      !!cont &&
-      (await verifyContinuationToken(cont, env.TURNSTILE_SECRET_KEY, { ip }));
-
-    if (!isContinuation) {
-      const cfToken =
-        typeof body.cfTurnstileToken === "string" ? body.cfTurnstileToken : "";
-      if (!cfToken) {
-        // The code tells the client to run the challenge and retry once.
-        return json(
-          { error: "Bot verification token is missing.", code: "turnstile_required" },
-          403,
-        );
-      }
-      const outcome = await verifyTurnstileToken(cfToken, env.TURNSTILE_SECRET_KEY, ip);
-      if (outcome === "fail") {
-        return json(
-          { error: "Bot verification failed.", code: "turnstile_failed" },
-          403,
-        );
-      }
-      if (outcome === "unavailable") {
-        // Fail open: a Cloudflare hiccup must not block real users.
-        console.warn("[philip] Turnstile siteverify unavailable, allowing request");
-      }
-    }
-
-    continuationToken = await mintContinuationToken(env.TURNSTILE_SECRET_KEY, { ip });
-  }
-
-  // --- Usage caps (hard backstop, independent of Turnstile) ---
+  // --- Usage caps: the per-conversation and per-IP/day backstops that bound
+  // how much this public, unauthenticated endpoint can spend on LLM calls. ---
   const maxPerConversation =
     parsePositiveInt(env.MAX_MESSAGES_PER_CONVERSATION) ??
     DEFAULT_LIMITS.maxMessagesPerConversation;
@@ -145,7 +102,6 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     referer: new URL(request.url).origin,
     title: "Philip",
     lang,
-    continuationToken,
   });
 
   context.waitUntil(
@@ -156,32 +112,3 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   );
   return response;
 };
-
-function json(obj: unknown, status: number): Response {
-  return new Response(JSON.stringify(obj), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
-}
-
-function parsePositiveInt(value: string | undefined): number | undefined {
-  if (!value) return undefined;
-  const n = Number.parseInt(value, 10);
-  return Number.isFinite(n) && n > 0 ? n : undefined;
-}
-
-const SUPPORTED_LANGS = new Set(["en", "es", "de"]);
-
-function resolveLang(bodyLang: string | null, acceptLanguage: string | null): string {
-  if (bodyLang) {
-    const base = bodyLang.split("-")[0].toLowerCase();
-    if (SUPPORTED_LANGS.has(base)) return base;
-  }
-  if (acceptLanguage) {
-    for (const part of acceptLanguage.split(",")) {
-      const base = part.split(";")[0].trim().split("-")[0].toLowerCase();
-      if (SUPPORTED_LANGS.has(base)) return base;
-    }
-  }
-  return "en";
-}

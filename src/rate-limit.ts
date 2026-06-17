@@ -1,6 +1,5 @@
-// D1-backed usage limits for /api/chat. These are a hard backstop independent
-// of Turnstile: Turnstile gates conversation creation, the caps here bound how
-// much any single conversation or IP can spend on LLM calls.
+// D1-backed usage limits for /api/chat. These are the primary abuse backstop:
+// they bound how much any single conversation or IP can spend on LLM calls.
 
 export interface RateLimits {
   /** Max user messages allowed in a single conversation. */

@@ -5,8 +5,9 @@
 // the snapshot expires (see migrations/0003).
 
 import { createShare } from "../../src/db.ts";
-import { sanitizeHistory } from "../../src/chat.ts";
+import { sanitizeHistory } from "../../src/messages.ts";
 import { DEFAULT_LIMITS, recordIpUsage } from "../../src/rate-limit.ts";
+import { clientIp, json, parsePositiveInt, resolveLang } from "../../src/http.ts";
 
 interface Env {
   DB: D1Database;
@@ -16,8 +17,6 @@ interface Env {
 // Guard rails so a public write endpoint can't be abused as free storage.
 const MAX_SHARE_MESSAGES = 1000;
 const MAX_SHARE_BYTES = 256 * 1024;
-
-const SUPPORTED_LANGS = new Set(["en", "es", "de"]);
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
   const { request, env } = context;
@@ -46,16 +45,14 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     return json({ error: "This conversation is too large to share." }, 413);
   }
 
-  const lang =
-    typeof body.lang === "string" && SUPPORTED_LANGS.has(body.lang) ? body.lang : "en";
+  const lang = resolveLang(typeof body.lang === "string" ? body.lang : null);
 
   // Sharing draws from the same per-IP/day budget as chatting.
   const maxPerIpPerDay =
     parsePositiveInt(env.MAX_MESSAGES_PER_IP_PER_DAY) ??
     DEFAULT_LIMITS.maxMessagesPerIpPerDay;
   try {
-    const ip = request.headers.get("CF-Connecting-IP");
-    const usage = await recordIpUsage(env.DB, ip, maxPerIpPerDay);
+    const usage = await recordIpUsage(env.DB, clientIp(request), maxPerIpPerDay);
     if (!usage.allowed) {
       return json({ error: "Daily limit reached. Please come back tomorrow." }, 429);
     }
@@ -68,16 +65,3 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   const shareUrl = `${url.origin}/?c=${id}`;
   return json({ id, url: shareUrl, expiresAt }, 201);
 };
-
-function json(obj: unknown, status: number): Response {
-  return new Response(JSON.stringify(obj), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
-}
-
-function parsePositiveInt(value: string | undefined): number | undefined {
-  if (!value) return undefined;
-  const n = Number.parseInt(value, 10);
-  return Number.isFinite(n) && n > 0 ? n : undefined;
-}

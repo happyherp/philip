@@ -6,10 +6,9 @@
 // those expire. This keeps message content off the server unless the reader
 // deliberately publishes a single conversation.
 
-export interface SharedMessage {
-  role: "user" | "assistant";
-  content: string;
-}
+import { type ConversationMessage, sanitizeHistory } from "./messages.ts";
+
+export type SharedMessage = ConversationMessage;
 
 export interface SharedConversation {
   id: string;
@@ -34,21 +33,6 @@ export function generateShareId(): string {
   return id;
 }
 
-/** Keep only well-formed user/assistant turns. */
-function sanitizeMessages(raw: unknown): SharedMessage[] {
-  if (!Array.isArray(raw)) return [];
-  const out: SharedMessage[] = [];
-  for (const m of raw) {
-    if (!m || typeof m !== "object") continue;
-    const role = (m as any).role;
-    const content = (m as any).content;
-    if ((role === "user" || role === "assistant") && typeof content === "string") {
-      out.push({ role, content });
-    }
-  }
-  return out;
-}
-
 /**
  * Store a conversation snapshot and return its share id. The snapshot is frozen
  * (a JSON blob), so continuing the conversation in the browser never mutates it.
@@ -62,7 +46,7 @@ export async function createShare(
   const id = generateShareId();
   const now = Date.now();
   const expiresAt = now + ttlMs;
-  const data = JSON.stringify(sanitizeMessages(messages));
+  const data = JSON.stringify(sanitizeHistory(messages));
   await db
     .prepare(
       "INSERT INTO shared_conversations (id, data, lang, created_at, expires_at) VALUES (?, ?, ?, ?, ?)",
@@ -96,7 +80,7 @@ export async function getShare(
 
   let messages: SharedMessage[] = [];
   try {
-    messages = sanitizeMessages(JSON.parse(row.data));
+    messages = sanitizeHistory(JSON.parse(row.data));
   } catch {
     messages = [];
   }

@@ -3,9 +3,14 @@
 // Pages Function (and, later, a WhatsApp webhook) are thin wrappers over this.
 
 import { type AssetFetch } from "./bible.ts";
-import { type ChatMessage, runChat } from "./openrouter.ts";
+import { runChat } from "./openrouter.ts";
 import { buildSystemPrompt } from "./philip.ts";
 import { translationById, translationForLang } from "./translations.ts";
+import { sanitizeHistory } from "./messages.ts";
+
+// Re-exported so the Pages Function (which already imports streamChatResponse
+// from here) can sanitize the client history from a single module.
+export { sanitizeHistory };
 
 export interface StreamChatOptions {
   /** Raw conversation from the client (only role/content trusted). */
@@ -18,23 +23,6 @@ export interface StreamChatOptions {
   title?: string;
   /** ISO 639-1 language code for the reader (e.g. "en", "es", "de"). Selects system prompt and Bible translation. */
   lang?: string;
-  /** If set, emitted as the X-Continuation-Token response header so the browser can skip Turnstile on later turns. */
-  continuationToken?: string;
-}
-
-/** Keep only well-formed user/assistant turns from untrusted client input. */
-export function sanitizeHistory(raw: unknown): ChatMessage[] {
-  if (!Array.isArray(raw)) return [];
-  const out: ChatMessage[] = [];
-  for (const m of raw) {
-    if (!m || typeof m !== "object") continue;
-    const role = (m as any).role;
-    const content = (m as any).content;
-    if ((role === "user" || role === "assistant") && typeof content === "string") {
-      out.push({ role, content });
-    }
-  }
-  return out;
 }
 
 /** Result of {@link streamChatResponse}: the SSE response plus its pump promise. */
@@ -88,16 +76,12 @@ export function streamChatResponse(opts: StreamChatOptions): StreamChatResult {
     }
   })();
 
-  const responseHeaders: Record<string, string> = {
-    "content-type": "text/event-stream; charset=utf-8",
-    "cache-control": "no-cache",
-    connection: "keep-alive",
-  };
-  if (opts.continuationToken) {
-    responseHeaders["x-continuation-token"] = opts.continuationToken;
-  }
   const response = new Response(readable, {
-    headers: responseHeaders,
+    headers: {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-cache",
+      connection: "keep-alive",
+    },
   });
 
   return { response, pump };
