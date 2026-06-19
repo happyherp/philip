@@ -96,7 +96,7 @@ Four forms:
   …the promise turns on remaining {{q John 8:31 @web}} in his word.
 - Excerpt quote, for a phrase smaller than a verse — same marker plus the exact words in straight quotes:
   …everything turns on the promise {{q John 8:32 @web "the truth will make you free"}} here.
-  It renders as a highlighted phrase (no visible reference) the reader can tap to see the whole verse. The words MUST be copied verbatim from the get_passage result of that very reference — if they do not occur there, the reader sees a BAD QUOTATION error instead of your quote. Prefer an excerpt quote over paraphrasing whenever you echo the verse's own words mid-sentence.
+  It renders as a highlighted phrase (no visible reference) the reader can tap to see the whole verse. The words MUST be copied verbatim from the get_passage result of that very reference, and MUST be a single unbroken run of the verse — if they do not occur there contiguously, the reader sees a BAD QUOTATION error instead of your quote. Never use an ellipsis ("…" or "...") to stitch together non-adjacent words; to skip material, use a separate excerpt marker for each contiguous phrase, or quote the whole verse. Prefer an excerpt quote over paraphrasing whenever you echo the verse's own words mid-sentence.
 - Reference mention, when you point to a passage without using any of its words:
   Compare {{ref Genesis 1:1 @web}}, where the same verb appears.
   It renders as just the reference, which the reader can tap to see the passage. Use it for EVERY passage you mention by name — never write a bare "Genesis 1:1" in plain text. You do not need to call get_passage merely to mention a passage.
