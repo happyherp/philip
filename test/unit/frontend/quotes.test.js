@@ -31,6 +31,11 @@ const MATTHEW_WEB = {
     6: {
       33: "But seek first God’s Kingdom, and his righteousness; and all these things will be given to you as well.",
     },
+    10: {
+      29: "“Aren’t two sparrows sold for an assarion coin? Not one of them falls on the ground apart from your Father’s will,",
+      30: "but the very hairs of your head are all numbered.",
+      31: "Therefore don’t be afraid. You are of more value than many sparrows.",
+    },
   },
 };
 
@@ -276,6 +281,36 @@ describe("excerpt quotes", () => {
     await flush();
     expect(el.className).toContain("quote-excerpt");
     expect(el.querySelector(".quote-text").textContent).toBe("the truth will make you free");
+  });
+
+  it("accepts an ellipsis elision across verses, joining with the verse's words", async () => {
+    const { impl } = fetchStub({ "/bible/web/matthew.json": MATTHEW_WEB });
+    // Quotes part of v29 then v31, eliding v30 with "..."; also "falls to" vs
+    // the verse's "falls on" — a slip within tolerance.
+    const [ok] = findMarkers(
+      `{{q Matthew 10:29-31 @web "Aren't two sparrows sold for an assarion coin? Not one of them falls to the ground apart from your Father's will... Therefore don't be afraid. You are of more value than many sparrows"}}`,
+    );
+    const el = buildQuoteElement(ok, "web", impl);
+    document.body.appendChild(el);
+    await flush();
+    expect(el.className).toContain("quote-excerpt");
+    expect(document.querySelector(".quote-bad")).toBeNull();
+    expect(el.querySelector(".quote-text").textContent).toBe(
+      "Aren’t two sparrows sold for an assarion coin? Not one of them falls on the ground apart from your Father’s will … Therefore don’t be afraid. You are of more value than many sparrows",
+    );
+  });
+
+  it("flags an elision when one segment is a misquote", async () => {
+    const { impl } = fetchStub({ "/bible/web/matthew.json": MATTHEW_WEB });
+    // First segment is faithful; the second invents words not in v30/v31.
+    const [bad] = findMarkers(
+      `{{q Matthew 10:29-31 @web "Aren't two sparrows sold for an assarion coin... money is the root of all happiness"}}`,
+    );
+    const el = buildQuoteElement(bad, "web", impl);
+    document.body.appendChild(el);
+    await flush();
+    expect(document.querySelector(".quote-bad")).not.toBeNull();
+    expect(document.querySelector(".quote-excerpt")).toBeNull();
   });
 
   // Misquotes that must STILL be flagged — the tolerance is a safety net for

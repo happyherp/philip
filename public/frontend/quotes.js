@@ -385,27 +385,40 @@ function approxSubstringMatch(needle, haystack) {
 /**
  * Match the model's excerpt against the verse text, tolerating minor quoting
  * slips (a contraction expanded, a stray word) via an edit-distance threshold.
+ * An ellipsis ("..." or "…") is read as an elision: the excerpt is split there
+ * and each segment must match, in order, within the verse text — so a quote
+ * that skips over a clause (a common, legitimate convention) is accepted.
  * Returns `{ text }` carrying the translation's *own* wording for the matched
- * span — so the reader always sees authentic scripture, never the model's
- * paraphrase — or null when the excerpt is too far off (a real misquote).
+ * span(s), rejoined with " … " across elisions — so the reader always sees
+ * authentic scripture, never the model's paraphrase — or null when any segment
+ * is too far off (a real misquote).
  */
 export function matchExcerpt(excerpt, verses) {
-  const needle = normalizeForMatch(excerpt);
-  if (needle.length === 0) return null;
+  const segments = excerpt
+    .split(/\s*(?:\.{3,}|…)\s*/)
+    .map((s) => normalizeForMatch(s))
+    .filter((s) => s.length > 0);
+  if (segments.length === 0) return null;
 
   const originalJoined = verses.join(" ").normalize("NFC");
   const { norm, map } = normalizeWithMap(originalJoined);
-  const { start, end, cost } = approxSubstringMatch(needle, norm);
-  if (cost > maxEdits(needle.length)) return null;
-
-  let origStart = start < map.length ? map[start] : originalJoined.length;
-  let origEnd = end < map.length ? map[end] : originalJoined.length;
-  // Snap to whole words: a fuzzy edge can land mid-word (the model's typo was
-  // shorter), and we want the translation's complete word, not a fragment.
   const isWord = (c) => c != null && /[\p{L}\p{N}'’]/u.test(c);
-  while (origStart > 0 && isWord(originalJoined[origStart - 1])) origStart--;
-  while (origEnd < originalJoined.length && isWord(originalJoined[origEnd])) origEnd++;
-  return { text: originalJoined.slice(origStart, origEnd).trim() };
+
+  const texts = [];
+  let cursor = 0; // segments must match in order, without backtracking
+  for (const seg of segments) {
+    const { start, end, cost } = approxSubstringMatch(seg, norm.slice(cursor));
+    if (cost > maxEdits(seg.length)) return null;
+    let origStart = cursor + start < map.length ? map[cursor + start] : originalJoined.length;
+    let origEnd = cursor + end < map.length ? map[cursor + end] : originalJoined.length;
+    // Snap to whole words: a fuzzy edge can land mid-word (the model's typo was
+    // shorter), and we want the translation's complete word, not a fragment.
+    while (origStart > 0 && isWord(originalJoined[origStart - 1])) origStart--;
+    while (origEnd < originalJoined.length && isWord(originalJoined[origEnd])) origEnd++;
+    texts.push(originalJoined.slice(origStart, origEnd).trim());
+    cursor += end;
+  }
+  return { text: texts.join(" … ") };
 }
 
 function badQuotationSpan(refLabel, meta, excerpt) {
