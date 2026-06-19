@@ -6,6 +6,29 @@ import { type AssetFetch, getPassage, passageToText } from "./bible.ts";
 import { GET_PASSAGE_TOOL, SYSTEM_PROMPT } from "./philip.ts";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+const CACHE_BREAKPOINT = { type: "ephemeral" as const };
+
+/**
+ * Apply a cache_control breakpoint to the last user/tool message so
+ * the entire conversation prefix up to that point is cached.
+ */
+function withCacheBreakpoints(msgs: ChatMessage[]): ChatMessage[] {
+  const out = msgs.map((m) => ({ ...m }));
+  // Find the last user or tool message and add a cache breakpoint.
+  for (let i = out.length - 1; i >= 0; i--) {
+    const m = out[i];
+    if (m.role === "user" || m.role === "tool") {
+      if (typeof m.content === "string" && m.content.length > 0) {
+        out[i] = {
+          ...m,
+          content: [{ type: "text", text: m.content, cache_control: CACHE_BREAKPOINT }],
+        };
+      }
+      break;
+    }
+  }
+  return out;
+}
 
 export interface ToolCall {
   id: string;
@@ -13,12 +36,28 @@ export interface ToolCall {
   function: { name: string; arguments: string };
 }
 
+/** A content block with optional cache_control for prompt caching. */
+export interface ContentBlock {
+  type: "text";
+  text: string;
+  cache_control?: { type: "ephemeral" };
+}
+
 export interface ChatMessage {
   role: "system" | "user" | "assistant" | "tool";
-  content: string | null;
+  content: string | ContentBlock[] | null;
   tool_calls?: ToolCall[];
   tool_call_id?: string;
   name?: string;
+}
+
+/** Token-usage stats returned from OpenRouter (final SSE chunk). */
+export interface ChatUsage {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+  cache_read_tokens?: number;
+  cache_write_tokens?: number;
 }
 
 export interface RunChatDeps {
@@ -43,21 +82,37 @@ export interface RunChatDeps {
   onTranslationUsed?: (translationId: string) => void | Promise<void>;
 }
 
+export interface RunChatResult {
+  text: string;
+  usage: ChatUsage;
+}
+
 /**
  * Run a full conversation turn: stream tokens to `onToken`, transparently
  * resolving any get_passage tool calls against the bundled bible. Returns the
- * final assistant text.
+ * final assistant text and token-usage stats (including cache metrics).
  */
-export async function runChat(history: ChatMessage[], deps: RunChatDeps): Promise<string> {
+export async function runChat(history: ChatMessage[], deps: RunChatDeps): Promise<RunChatResult> {
   const fetchImpl = deps.fetchImpl ?? fetch;
   const maxIterations = deps.maxIterations ?? 20;
 
+  // Build the message array with cache_control breakpoints on the system
+  // prompt and the last user/tool message — this tells the provider to cache
+  // the entire prefix up to each breakpoint (max 4 breakpoints allowed).
+  const systemContent: ContentBlock[] = [
+    {
+      type: "text",
+      text: deps.systemPrompt ?? SYSTEM_PROMPT,
+      cache_control: { type: "ephemeral" },
+    },
+  ];
   const messages: ChatMessage[] = [
-    { role: "system", content: deps.systemPrompt ?? SYSTEM_PROMPT },
+    { role: "system", content: systemContent },
     ...history,
   ];
 
   let finalText = "";
+  const aggregateUsage: ChatUsage = {};
 
   for (let iteration = 0; iteration < maxIterations; iteration++) {
     const headers: Record<string, string> = {
@@ -77,7 +132,7 @@ export async function runChat(history: ChatMessage[], deps: RunChatDeps): Promis
         headers,
         body: JSON.stringify({
           model: deps.model,
-          messages,
+          messages: withCacheBreakpoints(messages),
           tools: [GET_PASSAGE_TOOL],
           tool_choice: "auto",
           stream: true,
@@ -94,6 +149,9 @@ export async function runChat(history: ChatMessage[], deps: RunChatDeps): Promis
     }
 
     const turn = await consumeStream(res.body, deps.onToken);
+    // Merge usage from each streaming round (tool-call rounds report usage
+    // too, but we only surface the aggregate for the final answer turn).
+    if (turn.usage) Object.assign(aggregateUsage, turn.usage);
 
     if (turn.toolCalls.length > 0) {
       // The model wants verses. Record its tool-call turn, resolve each call,
@@ -115,7 +173,7 @@ export async function runChat(history: ChatMessage[], deps: RunChatDeps): Promis
     }
 
     finalText = turn.content;
-    return finalText;
+    return { text: finalText, usage: aggregateUsage };
   }
 
   throw new Error(`Exceeded ${maxIterations} tool-call iterations without a final answer.`);
@@ -157,6 +215,7 @@ async function executeToolCall(
 interface StreamTurn {
   content: string;
   toolCalls: ToolCall[];
+  usage?: ChatUsage;
 }
 
 /**
@@ -172,6 +231,7 @@ export async function consumeStream(
   const toolAcc: Map<number, ToolCall> = new Map();
   let content = "";
   let buffer = "";
+  let usage: ChatUsage | undefined;
 
   for (;;) {
     const { done, value } = await reader.read();
@@ -192,6 +252,20 @@ export async function consumeStream(
       } catch {
         continue; // OpenRouter sends ": OPENROUTER PROCESSING" keep-alives etc.
       }
+      // OpenRouter reports usage in the final chunk. Capture cache stats
+      // so callers can verify prompt caching is active.
+      const u = parsed?.usage;
+      if (u) {
+        const details = u.prompt_tokens_details;
+        usage = {
+          prompt_tokens: u.prompt_tokens,
+          completion_tokens: u.completion_tokens,
+          total_tokens: u.total_tokens,
+          cache_read_tokens: details?.cached_tokens ?? u.cache_read_tokens ?? 0,
+          cache_write_tokens: details?.cache_write_tokens ?? u.cache_write_tokens ?? 0,
+        };
+      }
+
       const delta = parsed?.choices?.[0]?.delta;
       if (!delta) continue;
 
@@ -219,6 +293,7 @@ export async function consumeStream(
   return {
     content,
     toolCalls: [...toolAcc.entries()].sort((a, b) => a[0] - b[0]).map(([, c]) => c),
+    usage,
   };
 }
 
