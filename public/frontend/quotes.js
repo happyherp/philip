@@ -270,9 +270,23 @@ function fillInline(el, verses, refLabel, meta, url) {
 
 // --- Sub-verse excerpt quotes ---
 
-/** Normalize text for excerpt matching: NFC, collapsed spaces, case-folded. */
+/**
+ * Normalize text for excerpt matching: NFC, collapsed spaces, case-folded, and
+ * typographic punctuation folded to ASCII. The bundled verses use curly
+ * apostrophes/quotes and en/em dashes (e.g. WEB's “God’s Kingdom”), but the
+ * model routinely emits the straight ASCII equivalents — folding them keeps a
+ * word-perfect quote from being flagged as BAD QUOTATION over a glyph.
+ */
 function normalizeForMatch(s) {
-  return s.normalize("NFC").toLowerCase().replace(/\s+/g, " ").trim();
+  return s
+    .normalize("NFC")
+    .toLowerCase()
+    .replace(/[’‘‛`´]/g, "'") // single quotes / apostrophes
+    .replace(/[“”„‟«»]/g, '"') // double quotes
+    .replace(/[‐-―]/g, "-") // hyphen, dashes (– — etc.)
+    .replace(/…/g, "...") // ellipsis
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /** Whether the model-quoted excerpt actually occurs in the verse text. */
