@@ -34,6 +34,18 @@ const MATTHEW_WEB = {
   },
 };
 
+// The verse uses the contraction "let’s" (curly apostrophe); the model tends to
+// expand it to "Let us" — a meaning-preserving slip we tolerate.
+const CORINTHIANS_WEB = {
+  book: "1 Corinthians",
+  translation: "WEB",
+  chapters: {
+    15: {
+      32: "If I fought with animals at Ephesus for human purposes, what does it profit me? If the dead are not raised, then “let’s eat and drink, for tomorrow we die.”",
+    },
+  },
+};
+
 const GENESIS_WLC = {
   book: "Genesis",
   translation: "WLC",
@@ -212,17 +224,18 @@ describe("excerpt quotes", () => {
     expect(el.querySelector(".quote-text").getAttribute("data-translation")).toBe("web");
   });
 
-  it("tolerates case and whitespace differences but nothing else", async () => {
+  it("tolerates case and whitespace differences, showing the verse's own text", async () => {
     const { impl } = fetchStub({ "/bible/web/john.json": JOHN_WEB });
-    const [ok] = findMarkers('{{q John 8:32 @web "You will know  the truth"}}');
+    const [ok] = findMarkers('{{q John 8:32 @web "you will know  the truth"}}');
     const el = buildQuoteElement(ok, "web", impl);
     document.body.appendChild(el);
     await flush();
-    expect(el.isConnected).toBe(true);
     expect(el.className).toContain("quote-excerpt");
+    // Display is the translation's wording (capital "You", single space).
+    expect(el.querySelector(".quote-text").textContent).toBe("You will know the truth");
   });
 
-  it("accepts a straight ASCII apostrophe against the verse's curly one", async () => {
+  it("accepts a straight ASCII apostrophe and displays the verse's curly one", async () => {
     const { impl } = fetchStub({ "/bible/web/matthew.json": MATTHEW_WEB });
     // Model emits "God's" (U+0027); the verse has "God’s" (U+2019).
     const [ok] = findMarkers(
@@ -233,6 +246,52 @@ describe("excerpt quotes", () => {
     await flush();
     expect(el.className).toContain("quote-excerpt");
     expect(document.querySelector(".quote-bad")).toBeNull();
+    expect(el.querySelector(".quote-text").textContent).toBe(
+      "seek first God’s Kingdom, and his righteousness",
+    );
+  });
+
+  it("tolerates a contraction the model expanded, showing the verse's contraction", async () => {
+    const { impl } = fetchStub({ "/bible/web/1corinthians.json": CORINTHIANS_WEB });
+    // Verse: "let’s eat and drink…"; model wrote the expansion "Let us eat…".
+    const [ok] = findMarkers(
+      '{{q 1 Corinthians 15:32 @web "Let us eat and drink, for tomorrow we die"}}',
+    );
+    const el = buildQuoteElement(ok, "web", impl);
+    document.body.appendChild(el);
+    await flush();
+    expect(el.className).toContain("quote-excerpt");
+    expect(document.querySelector(".quote-bad")).toBeNull();
+    expect(el.querySelector(".quote-text").textContent).toBe(
+      "let’s eat and drink, for tomorrow we die",
+    );
+  });
+
+  it("tolerates a single-character typo and snaps to the whole word", async () => {
+    const { impl } = fetchStub({ "/bible/web/john.json": JOHN_WEB });
+    // "fee" → the verse's "free": one edit, and the clipped word is restored.
+    const [ok] = findMarkers('{{q John 8:32 @web "the truth will make you fee"}}');
+    const el = buildQuoteElement(ok, "web", impl);
+    document.body.appendChild(el);
+    await flush();
+    expect(el.className).toContain("quote-excerpt");
+    expect(el.querySelector(".quote-text").textContent).toBe("the truth will make you free");
+  });
+
+  // Misquotes that must STILL be flagged — the tolerance is a safety net for
+  // trivial slips, not a license to paraphrase.
+  it.each([
+    ["a swapped key word", "the truth will make you rich"],
+    ["a paraphrase that keeps the gist", "the truth shall liberate your soul"],
+    ["words from a different verse", "blessed are the peacemakers"],
+  ])("shows BAD QUOTATION for %s", async (_label, excerpt) => {
+    const { impl } = fetchStub({ "/bible/web/john.json": JOHN_WEB });
+    const [bad] = findMarkers(`{{q John 8:32 @web "${excerpt}"}}`);
+    const el = buildQuoteElement(bad, "web", impl);
+    document.body.appendChild(el);
+    await flush();
+    expect(document.querySelector(".quote-bad")).not.toBeNull();
+    expect(document.querySelector(".quote-excerpt")).toBeNull();
   });
 
   it("shows BAD QUOTATION when the words are not in the verse", async () => {
