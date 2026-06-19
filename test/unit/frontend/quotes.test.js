@@ -23,6 +23,17 @@ const JOHN_WEB = {
   },
 };
 
+// WEB renders apostrophes/quotes typographically (U+2019 in "God’s").
+const MATTHEW_WEB = {
+  book: "Matthew",
+  translation: "WEB",
+  chapters: {
+    6: {
+      33: "But seek first God’s Kingdom, and his righteousness; and all these things will be given to you as well.",
+    },
+  },
+};
+
 const GENESIS_WLC = {
   book: "Genesis",
   translation: "WLC",
@@ -209,6 +220,19 @@ describe("excerpt quotes", () => {
     await flush();
     expect(el.isConnected).toBe(true);
     expect(el.className).toContain("quote-excerpt");
+  });
+
+  it("accepts a straight ASCII apostrophe against the verse's curly one", async () => {
+    const { impl } = fetchStub({ "/bible/web/matthew.json": MATTHEW_WEB });
+    // Model emits "God's" (U+0027); the verse has "God’s" (U+2019).
+    const [ok] = findMarkers(
+      `{{q Matthew 6:33 @web "seek first God's Kingdom, and his righteousness"}}`,
+    );
+    const el = buildQuoteElement(ok, "web", impl);
+    document.body.appendChild(el);
+    await flush();
+    expect(el.className).toContain("quote-excerpt");
+    expect(document.querySelector(".quote-bad")).toBeNull();
   });
 
   it("shows BAD QUOTATION when the words are not in the verse", async () => {
