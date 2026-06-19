@@ -168,7 +168,14 @@ body {
   margin: 0 auto;
 }
 
-.msg { margin: 0 0 18px; display: flex; }
+/* Blank tail that reserves room below the latest turn while it streams, so a
+   new reply can sit at the top of the log and grow downward. Height is set
+   from JS (a viewport's worth during streaming, then cleared). */
+.log-spacer { flex-shrink: 0; }
+
+/* When a new turn is scrolled to the top of the log, leave a little breathing
+   room above it rather than butting it flush against the top edge. */
+.msg { margin: 0 0 18px; display: flex; scroll-margin-top: 12px; }
 .msg-user { justify-content: flex-end; }
 .msg-body {
   max-width: 88%;
