@@ -15,6 +15,9 @@ permissions:
   contents: read
   pull-requests: write
 
+# The critical path to production: typecheck + unit tests, then ship. The
+# slower browser (e2e) and live integration checks run in parallel in ci.yml
+# and never block a deploy — they surface failures as their own status checks.
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -31,21 +34,6 @@ jobs:
       - run: npm run typecheck
 
       - run: npm test
-
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
-
-      - run: npm run test:e2e
-
-      - name: Integration tests (skipped without OPENROUTER_API_KEY)
-        env:
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-        run: |
-          if [ -z "$OPENROUTER_API_KEY" ]; then
-            echo "OPENROUTER_API_KEY not set — skipping live integration tests."
-            exit 0
-          fi
-          RUN_INTEGRATION=1 npm run test:integration
 
       # main -> production deployment; any other branch (i.e. a PR) -> a Cloudflare
       # Pages *preview* deployment at https://<branch>.philip-3jf.pages.dev.
