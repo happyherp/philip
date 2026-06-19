@@ -26,6 +26,7 @@ body {
 }
 
 .topbar {
+  position: relative;
   text-align: center;
   padding: 18px 16px 8px;
   border-bottom: 1px solid var(--border);
@@ -38,8 +39,7 @@ body {
   color: var(--accent);
   display: inline;
 }
-.topbar #new-chat,
-.topbar #share-chat {
+.topbar .chip {
   margin-left: 0.6em;
   font-size: 0.65rem;
   vertical-align: middle;
@@ -48,17 +48,115 @@ body {
   border: 1px solid var(--border);
   padding: 1px 5px;
   border-radius: 3px;
+  cursor: pointer;
 }
-.topbar #new-chat:hover,
-.topbar #share-chat:hover {
+.topbar .chip:hover,
+.topbar .chip[aria-expanded="true"] {
   color: var(--accent);
   border-color: var(--accent-soft);
+}
+/* Share stays visible but inert until the reader has had a first reply. */
+.topbar .chip.disabled {
+  opacity: 0.4;
+  cursor: default;
+  pointer-events: none;
 }
 .tagline {
   margin: 2px 0 0;
   font-size: 0.85rem;
   font-style: italic;
   color: var(--muted);
+}
+
+/* Saved conversations: a dropdown panel anchored under the topbar, opened from
+   the "saved" chip. Overlays the chat instead of pushing it down — works the
+   same on mobile, where it spans almost the full width. */
+.conversations {
+  position: absolute;
+  top: calc(100% - 1px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  width: calc(100% - 16px);
+  max-width: 32rem;
+  max-height: min(60vh, 28rem);
+  overflow-y: auto;
+  text-align: left;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+  padding: 14px 14px 16px;
+}
+.conversations-title {
+  margin: 0 0 10px;
+  font-size: 0.8rem;
+  font-weight: normal;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.conversation-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.conversation-item {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  overflow: hidden;
+}
+.conversation-open {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 10px 12px;
+  font: inherit;
+  color: var(--ink);
+}
+.conversation-open:hover {
+  background: var(--user);
+}
+.conversation-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+.conversation-summary {
+  font-size: 0.82rem;
+  color: var(--muted);
+  font-style: italic;
+}
+.conversation-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 8px;
+}
+.conversation-action {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.7rem;
+  color: var(--muted);
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+.conversation-action:hover {
+  color: var(--accent);
+  background: var(--user);
 }
 
 .log {
