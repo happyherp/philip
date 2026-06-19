@@ -271,28 +271,141 @@ function fillInline(el, verses, refLabel, meta, url) {
 // --- Sub-verse excerpt quotes ---
 
 /**
- * Normalize text for excerpt matching: NFC, collapsed spaces, case-folded, and
- * typographic punctuation folded to ASCII. The bundled verses use curly
- * apostrophes/quotes and en/em dashes (e.g. WEB's “God’s Kingdom”), but the
- * model routinely emits the straight ASCII equivalents — folding them keeps a
- * word-perfect quote from being flagged as BAD QUOTATION over a glyph.
+ * Fold one source character for matching: typographic punctuation collapses to
+ * its ASCII equivalent, everything else just case-folds. The bundled verses use
+ * curly apostrophes/quotes and en/em dashes (e.g. WEB's “God’s Kingdom”) while
+ * the model routinely emits the straight ASCII forms — folding them keeps a
+ * word-perfect quote from being flagged as BAD QUOTATION over a glyph. Returns
+ * a string because a few folds expand (… → "...") or case-folds lengthen.
  */
-function normalizeForMatch(s) {
-  return s
-    .normalize("NFC")
-    .toLowerCase()
-    .replace(/[’‘‛`´]/g, "'") // single quotes / apostrophes
-    .replace(/[“”„‟«»]/g, '"') // double quotes
-    .replace(/[‐-―]/g, "-") // hyphen, dashes (– — etc.)
-    .replace(/…/g, "...") // ellipsis
-    .replace(/\s+/g, " ")
-    .trim();
+function foldChar(ch) {
+  if ("’‘‛`´".includes(ch)) return "'"; // single quotes / apostrophes
+  if ("“”„‟«»".includes(ch)) return '"'; // double quotes
+  if (ch >= "‐" && ch <= "―") return "-"; // hyphen, dashes (– — etc.)
+  if (ch === "…") return "..."; // ellipsis
+  return ch.toLowerCase();
 }
 
-/** Whether the model-quoted excerpt actually occurs in the verse text. */
-export function excerptInVerses(excerpt, verses) {
+/**
+ * Normalize for matching while remembering where each output character came
+ * from: NFC, case-folded, punctuation folded, whitespace runs collapsed to a
+ * single space, leading/trailing space trimmed. Returns `{ norm, map }` where
+ * `map[k]` is the index in the NFC'd input of the character that produced
+ * `norm[k]` — letting a fuzzy match be projected back onto the original text so
+ * we can display the translation's own wording, not the model's.
+ */
+function normalizeWithMap(input) {
+  const src = input.normalize("NFC");
+  const out = [];
+  const map = [];
+  let pendingSpaceAt = -1; // index of a whitespace run awaiting a flush
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i];
+    if (/\s/.test(ch)) {
+      if (pendingSpaceAt < 0) pendingSpaceAt = i;
+      continue;
+    }
+    if (pendingSpaceAt >= 0) {
+      if (out.length > 0) {
+        // collapse the run to one space; drop it entirely if leading
+        out.push(" ");
+        map.push(pendingSpaceAt);
+      }
+      pendingSpaceAt = -1;
+    }
+    for (const fc of foldChar(ch)) {
+      out.push(fc);
+      map.push(i);
+    }
+  }
+  // a trailing whitespace run is simply dropped (trim)
+  return { norm: out.join(""), map };
+}
+
+function normalizeForMatch(s) {
+  return normalizeWithMap(s).norm;
+}
+
+/** Edits tolerated for an excerpt of `len` normalized chars (~12%, min 1). */
+function maxEdits(len) {
+  return Math.max(1, Math.floor(len * 0.12));
+}
+
+/**
+ * Approximate substring search: the minimum edit (Levenshtein) distance between
+ * `needle` and any substring of `haystack`, with the best-matching span. The
+ * first DP row is all zeros so a match may begin at any offset for free; the
+ * minimum of the final row gives the best end and cost, and a parallel table of
+ * start indices recovers the span. O(needle × haystack) — trivial at verse size.
+ */
+function approxSubstringMatch(needle, haystack) {
+  const m = needle.length;
+  const n = haystack.length;
+  if (m === 0) return { start: 0, end: 0, cost: 0 };
+
+  let prev = new Array(n + 1).fill(0); // row 0: empty needle, free start anywhere
+  let prevStart = Array.from({ length: n + 1 }, (_, j) => j);
+  for (let i = 1; i <= m; i++) {
+    const cur = new Array(n + 1);
+    const curStart = new Array(n + 1);
+    cur[0] = i; // drop all needle chars so far; empty substring at offset 0
+    curStart[0] = 0;
+    for (let j = 1; j <= n; j++) {
+      const sub = prev[j - 1] + (needle[i - 1] === haystack[j - 1] ? 0 : 1);
+      const del = prev[j] + 1; // skip a needle char
+      const ins = cur[j - 1] + 1; // consume a haystack char mid-span
+      let best = sub;
+      let from = prevStart[j - 1];
+      if (del < best) {
+        best = del;
+        from = prevStart[j];
+      }
+      if (ins < best) {
+        best = ins;
+        from = curStart[j - 1];
+      }
+      cur[j] = best;
+      curStart[j] = from;
+    }
+    prev = cur;
+    prevStart = curStart;
+  }
+
+  let end = 0;
+  let cost = prev[0];
+  for (let j = 1; j <= n; j++) {
+    if (prev[j] < cost) {
+      cost = prev[j];
+      end = j;
+    }
+  }
+  return { start: prevStart[end], end, cost };
+}
+
+/**
+ * Match the model's excerpt against the verse text, tolerating minor quoting
+ * slips (a contraction expanded, a stray word) via an edit-distance threshold.
+ * Returns `{ text }` carrying the translation's *own* wording for the matched
+ * span — so the reader always sees authentic scripture, never the model's
+ * paraphrase — or null when the excerpt is too far off (a real misquote).
+ */
+export function matchExcerpt(excerpt, verses) {
   const needle = normalizeForMatch(excerpt);
-  return needle.length > 0 && normalizeForMatch(verses.join(" ")).includes(needle);
+  if (needle.length === 0) return null;
+
+  const originalJoined = verses.join(" ").normalize("NFC");
+  const { norm, map } = normalizeWithMap(originalJoined);
+  const { start, end, cost } = approxSubstringMatch(needle, norm);
+  if (cost > maxEdits(needle.length)) return null;
+
+  let origStart = start < map.length ? map[start] : originalJoined.length;
+  let origEnd = end < map.length ? map[end] : originalJoined.length;
+  // Snap to whole words: a fuzzy edge can land mid-word (the model's typo was
+  // shorter), and we want the translation's complete word, not a fragment.
+  const isWord = (c) => c != null && /[\p{L}\p{N}'’]/u.test(c);
+  while (origStart > 0 && isWord(originalJoined[origStart - 1])) origStart--;
+  while (origEnd < originalJoined.length && isWord(originalJoined[origEnd])) origEnd++;
+  return { text: originalJoined.slice(origStart, origEnd).trim() };
 }
 
 function badQuotationSpan(refLabel, meta, excerpt) {
@@ -456,8 +569,9 @@ export function buildQuoteElement(marker, defaultTranslationId, fetchImpl) {
       return errorSpan(`${refLabel} (${meta.name})`);
     }
     if (excerpt) {
-      if (!excerptInVerses(excerpt, verses)) return badQuotationSpan(refLabel, meta, excerpt);
-      fillExcerpt(el, verses, refLabel, meta, url, excerpt);
+      const match = matchExcerpt(excerpt, verses);
+      if (!match) return badQuotationSpan(refLabel, meta, excerpt);
+      fillExcerpt(el, verses, refLabel, meta, url, match.text);
     } else if (isBlock) {
       fillBlock(el, verses, refLabel, meta, url);
     } else {
