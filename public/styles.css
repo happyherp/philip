@@ -229,6 +229,22 @@ blockquote.quote-block {
   display: block;
   font-style: italic;
 }
+/* Verse-number counters, as in a printed Bible — small, raised, and unobtrusive
+   so the scripture itself stays in the foreground. Block quotes only. */
+.quote-block .quote-versenum {
+  font-style: normal;
+  font-weight: 600;
+  font-size: 0.62em;
+  line-height: 0;
+  color: var(--accent);
+  margin-right: 0.15em;
+  vertical-align: super;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+.quote-text[dir="rtl"] .quote-versenum {
+  margin-right: 0;
+  margin-left: 0.15em;
+}
 .quote-block .quote-attrib {
   display: block;
   margin-top: 0.4em;
