@@ -178,7 +178,8 @@ test.describe("text chat", () => {
     });
     await page.goto("/");
 
-    // No saved-conversations list on a thin start page.
+    // A thin start page: no "saved" chip and no panel.
+    await expect(page.locator("#toggle-conversations")).toBeHidden();
     await expect(page.locator("#conversations")).toBeHidden();
 
     await page.locator("#input").fill("Tell me about grace");
@@ -187,11 +188,17 @@ test.describe("text chat", () => {
       "A reply about grace.",
     );
 
-    // Start a new conversation: the current one moves into the list.
+    // Start a new conversation: the current one moves into the list, and the
+    // "saved" chip appears — but the panel stays closed until it's clicked.
     await page.locator("#new-chat").click();
+    await expect(page.locator("#toggle-conversations")).toBeVisible();
+    await expect(page.locator("#conversations")).toBeHidden();
+
+    // Open the dropdown from the chip.
+    await page.locator("#toggle-conversations").click();
+    await expect(page.locator("#conversations")).toBeVisible();
 
     const item = page.locator(".conversation-item").first();
-    await expect(page.locator("#conversations")).toBeVisible();
     await expect(item.locator(".conversation-name")).toHaveText("Grace in Ephesians");
     await expect(item.locator(".conversation-summary")).toHaveText(
       "Discussed grace in Ephesians 2:8.",
@@ -200,9 +207,33 @@ test.describe("text chat", () => {
     // The active log was reset to the welcome bubble only.
     await expect(page.locator(".msg-user")).toHaveCount(0);
 
-    // Delete removes it from the list, hiding the (now empty) panel.
+    // Delete removes it from the list; with nothing left, the chip and panel go away.
     page.once("dialog", (d) => d.accept());
     await item.locator(".conversation-action", { hasText: "delete" }).click();
+    await expect(page.locator("#conversations")).toBeHidden();
+    await expect(page.locator("#toggle-conversations")).toBeHidden();
+  });
+
+  test("the saved dropdown closes on outside click", async ({ page }) => {
+    await mockChatStream(page, ["A reply."]);
+    await page.route("/api/summary", async (route) => {
+      await route.fulfill({
+        status: 200,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ title: "Saved one", summary: "On John 1:1." }),
+      });
+    });
+    await page.goto("/");
+    await page.locator("#input").fill("Hello");
+    await page.locator("#send").click();
+    await expect(page.locator(".msg-assistant .msg-body").last()).toContainText("A reply.");
+    await page.locator("#new-chat").click();
+
+    await page.locator("#toggle-conversations").click();
+    await expect(page.locator("#conversations")).toBeVisible();
+
+    // Clicking in the chat area (outside the dropdown) dismisses it.
+    await page.locator("#log").click({ position: { x: 5, y: 5 } });
     await expect(page.locator("#conversations")).toBeHidden();
   });
 

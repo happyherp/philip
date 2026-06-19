@@ -16,17 +16,19 @@
   <body>
     <header class="topbar">
       <h1>Philip</h1>
-      <a href="#" id="share-chat" class="disabled" aria-disabled="true" title="Copy a link to this conversation">share</a>
-      <a href="#" id="new-chat" title="Start a fresh conversation">new</a>
+      <a href="#" id="toggle-conversations" class="chip" aria-expanded="false" aria-controls="conversations" title="Saved conversations" hidden>saved</a>
+      <a href="#" id="share-chat" class="chip disabled" aria-disabled="true" title="Copy a link to this conversation">share</a>
+      <a href="#" id="new-chat" class="chip" title="Start a fresh conversation">new</a>
       <p class="tagline">“Do you understand what you are reading?” — Acts 8:30</p>
-    </header>
 
-    <!-- Past conversations saved in this browser. Hidden until the reader
-         starts a new chat, so the first-visit start page stays thin. -->
-    <nav id="conversations" class="conversations" aria-label="Saved conversations" hidden>
-      <h2 id="conversations-title" class="conversations-title">Saved conversations</h2>
-      <ul id="conversation-list" class="conversation-list"></ul>
-    </nav>
+      <!-- Past conversations saved in this browser. Opened from the "saved"
+           chip; the chip itself only appears once there's something in the list,
+           so the first-visit start page stays thin. -->
+      <nav id="conversations" class="conversations" aria-label="Saved conversations" hidden>
+        <h2 id="conversations-title" class="conversations-title">Saved conversations</h2>
+        <ul id="conversation-list" class="conversation-list"></ul>
+      </nav>
+    </header>
 
     <main id="log" class="log" aria-live="polite">
       <div class="msg msg-assistant">

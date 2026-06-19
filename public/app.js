@@ -27,6 +27,7 @@ const shareBtn = document.getElementById("share-chat");
 const convNav = document.getElementById("conversations");
 const convListEl = document.getElementById("conversation-list");
 const convTitleEl = document.getElementById("conversations-title");
+const convToggleBtn = document.getElementById("toggle-conversations");
 
 // Past conversations saved in this browser (newest first).
 let conversations = [];
@@ -102,6 +103,10 @@ function applyI18n() {
   sendBtn.textContent = t.send;
   if (newBtn) newBtn.textContent = t.new_chat;
   if (shareBtn) shareBtn.textContent = t.share;
+  if (convToggleBtn) {
+    convToggleBtn.textContent = t.conversations_toggle;
+    convToggleBtn.title = t.conversations_title;
+  }
   if (convTitleEl) convTitleEl.textContent = t.conversations_title;
   renderConversationList();
   updateShareState();
@@ -370,15 +375,26 @@ function resetActive() {
   input.focus();
 }
 
+/** Show or hide the dropdown panel. */
+function setConversationsOpen(open) {
+  if (!convNav || !convToggleBtn) return;
+  // The list is reachable only via its chip, which is itself hidden when empty.
+  const canOpen = open && conversations.length > 0;
+  convNav.hidden = !canOpen;
+  convToggleBtn.setAttribute("aria-expanded", String(canOpen));
+}
+
 function renderConversationList() {
   if (!convListEl || !convNav) return;
   convListEl.innerHTML = "";
   if (conversations.length === 0) {
-    // Keep the start page thin: the list only appears once there's something in it.
-    convNav.hidden = true;
+    // Keep the start page thin: the chip (and panel) only appear once there's
+    // something saved.
+    if (convToggleBtn) convToggleBtn.hidden = true;
+    setConversationsOpen(false);
     return;
   }
-  convNav.hidden = false;
+  if (convToggleBtn) convToggleBtn.hidden = false;
   for (const c of conversations) {
     const li = document.createElement("li");
     li.className = "conversation-item";
@@ -430,6 +446,7 @@ async function openConversation(id) {
   renderMessages(target.messages);
   saveConversation();
   renderConversationList();
+  setConversationsOpen(false);
   log.scrollTop = 0;
 }
 
@@ -470,6 +487,25 @@ if (newBtn) {
     history.replaceState(null, "", url.toString());
   });
 }
+
+// Toggle the saved-conversations dropdown.
+if (convToggleBtn) {
+  convToggleBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    setConversationsOpen(convNav.hidden);
+  });
+}
+
+// Dismiss the dropdown on Escape or a click/tap outside it.
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && convNav && !convNav.hidden) setConversationsOpen(false);
+});
+document.addEventListener("pointerdown", (e) => {
+  if (!convNav || convNav.hidden) return;
+  const target = e.target;
+  if (convNav.contains(target) || convToggleBtn?.contains(target)) return;
+  setConversationsOpen(false);
+});
 
 // --- Share: explicit, opt-in server snapshot ---
 // Conversations are browser-only; "share" is the one action that copies the
