@@ -74,9 +74,7 @@ if (micBtn && !SpeechRecognition) {
       .join("");
     // Replace everything from interimStart onward with the latest transcript
     input.value = input.value.slice(0, interimStart) + transcript;
-    // Auto-grow textarea
-    input.style.height = "auto";
-    input.style.height = input.scrollHeight + "px";
+    autoGrow();
   });
 
   recognition.addEventListener("end", () => {
@@ -285,6 +283,7 @@ async function send(text) {
   addMessage(state, "user", trimmed);
   const { wrap: userWrap } = addBubble("user", trimmed);
   input.value = "";
+  autoGrow();
   setBusy(true);
 
   // Send the conversation up to and including this user turn (the assistant
@@ -361,6 +360,27 @@ function setBusy(busy) {
   if (micBtn) micBtn.disabled = busy;
   if (!busy) input.focus();
 }
+
+/**
+ * Resize the textarea to fit its content: shrinks back to one row when empty
+ * and grows line-by-line as the reader types. The CSS max-height caps it at
+ * five lines, after which it scrolls.
+ */
+function autoGrow() {
+  input.style.height = "auto";
+  const height = input.scrollHeight;
+  input.style.height = height + "px";
+  // Once the input spills past a single line, stack the Send/mic buttons so
+  // they take less width and the textarea gets more room.
+  const cs = getComputedStyle(input);
+  const oneLine =
+    parseFloat(cs.lineHeight) +
+    parseFloat(cs.paddingTop) +
+    parseFloat(cs.paddingBottom);
+  form.classList.toggle("multiline", height > oneLine + 1);
+}
+
+input.addEventListener("input", autoGrow);
 
 form.addEventListener("submit", (e) => {
   e.preventDefault();
