@@ -368,7 +368,16 @@ function setBusy(busy) {
  */
 function autoGrow() {
   input.style.height = "auto";
-  input.style.height = input.scrollHeight + "px";
+  const height = input.scrollHeight;
+  input.style.height = height + "px";
+  // Once the input spills past a single line, stack the Send/mic buttons so
+  // they take less width and the textarea gets more room.
+  const cs = getComputedStyle(input);
+  const oneLine =
+    parseFloat(cs.lineHeight) +
+    parseFloat(cs.paddingTop) +
+    parseFloat(cs.paddingBottom);
+  form.classList.toggle("multiline", height > oneLine + 1);
 }
 
 input.addEventListener("input", autoGrow);

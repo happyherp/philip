@@ -378,6 +378,22 @@ a.quote-ref:hover { color: var(--accent); }
   border-top: 1px solid var(--border);
   background: var(--panel);
 }
+/* Mic + Send sit beside the input on one line, then stack vertically once
+   the input grows past a single line, handing that width back to the input. */
+.composer-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.composer.multiline .composer-actions {
+  flex-direction: column;
+}
+/* When stacked, the two buttons split the input's height between them
+   instead of each matching its full height. */
+.composer.multiline #mic,
+.composer.multiline #send {
+  flex: 1;
+}
 #input {
   flex: 1;
   resize: none;
