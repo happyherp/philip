@@ -132,7 +132,21 @@ function clearStoredConversation() {
   }
 }
 
-/** Append a message bubble and return its content element. */
+// A blank spacer kept as the log's last child. During streaming it is grown to
+// a full viewport so the latest turn can be scrolled to the top of the screen
+// (the reply then fills the empty space below instead of pushing text upward).
+let spacer = null;
+function ensureSpacer() {
+  if (!spacer) {
+    spacer = document.createElement("div");
+    spacer.className = "log-spacer";
+    spacer.setAttribute("aria-hidden", "true");
+  }
+  if (spacer.parentNode !== log) log.appendChild(spacer);
+  return spacer;
+}
+
+/** Append a message bubble and return its wrapper and content elements. */
 function addBubble(role, markdown) {
   const wrap = document.createElement("div");
   wrap.className = `msg msg-${role}`;
@@ -140,9 +154,10 @@ function addBubble(role, markdown) {
   body.className = "msg-body";
   renderMessageInto(body, markdown, { lang });
   wrap.appendChild(body);
-  log.appendChild(wrap);
+  // Keep new bubbles above the trailing spacer.
+  log.insertBefore(wrap, ensureSpacer());
   log.scrollTop = log.scrollHeight;
-  return body;
+  return { wrap, body };
 }
 
 /** Render a list of stored messages into the log, keeping the static welcome bubble. */
@@ -215,7 +230,7 @@ async function send(text) {
   if (!trimmed) return;
 
   addMessage(state, "user", trimmed);
-  addBubble("user", trimmed);
+  const { wrap: userWrap } = addBubble("user", trimmed);
   input.value = "";
   setBusy(true);
 
@@ -224,8 +239,26 @@ async function send(text) {
   const outgoing = toHistory(state);
 
   const assistant = addMessage(state, "assistant", "");
-  const bubble = addBubble("assistant", "");
+  const { body: bubble } = addBubble("assistant", "");
   bubble.classList.add("thinking");
+
+  // Anchor this turn near the top of the log and reserve a screen of empty
+  // space below, so the streaming reply grows downward into that space instead
+  // of pushing the text the reader is looking at upward. We do not auto-scroll
+  // again during the stream — the reading position stays put.
+  ensureSpacer().style.height = `${log.clientHeight}px`;
+  userWrap.scrollIntoView({ block: "start" });
+
+  // Re-render at most once per animation frame: many tokens can arrive within
+  // a single frame, and re-parsing the whole markdown each time causes flicker.
+  let frame = 0;
+  const flush = () => {
+    frame = 0;
+    renderMessageInto(bubble, assistant.content, { lang });
+  };
+  const scheduleRender = () => {
+    if (!frame) frame = requestAnimationFrame(flush);
+  };
 
   let failure = null;
   await streamChat({
@@ -235,13 +268,18 @@ async function send(text) {
     onToken: (token) => {
       bubble.classList.remove("thinking");
       appendToken(state, token);
-      renderMessageInto(bubble, assistant.content, { lang });
-      log.scrollTop = log.scrollHeight;
+      scheduleRender();
     },
     onError: (message, info) => {
       failure = { message, code: info?.code };
     },
   });
+
+  // The stream is done: drop any pending frame and render the final content
+  // once, then release the reserved space so a finished chat has no big gap.
+  if (frame) cancelAnimationFrame(frame);
+  renderMessageInto(bubble, assistant.content, { lang });
+  ensureSpacer().style.height = "";
 
   if (failure) {
     console.error("[philip]", failure.message);
