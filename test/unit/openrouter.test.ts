@@ -65,14 +65,17 @@ describe("runChat tool loop", () => {
       },
     });
 
-    expect(final).toBe("Here is John 8:31.");
+    expect(final.text).toBe("Here is John 8:31.");
     expect(tokens.join("")).toBe("Here is John 8:31.");
 
     // The second request must include the tool result with the EXACT WEB text.
     const secondBody = (await bodies())[1];
     const toolMsg = secondBody.messages.find((m: any) => m.role === "tool");
     expect(toolMsg).toBeTruthy();
-    expect(toolMsg.content).toContain("If you remain in my word");
+    // Content may be a string or a ContentBlock[] (with cache_control);
+    // stringify to check either shape.
+    const toolContent = JSON.stringify(toolMsg.content);
+    expect(toolContent).toContain("If you remain in my word");
     // And the system prompt is always present.
     expect(secondBody.messages[0].role).toBe("system");
   });
@@ -94,7 +97,8 @@ describe("runChat tool loop", () => {
     });
 
     const toolMsg = (await bodies())[1].messages.find((m: any) => m.role === "tool");
-    expect(toolMsg.content).toContain("error");
+    const toolContent = JSON.stringify(toolMsg.content);
+    expect(toolContent).toContain("error");
   });
 
   it("throws if the model never stops calling tools", async () => {
