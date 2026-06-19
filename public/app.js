@@ -2,6 +2,14 @@
 import { addMessage, appendToken, createState, toHistory } from "./frontend/state.js";
 import { renderMessageInto } from "./frontend/render.js";
 import { streamChat } from "./frontend/chat-client.js";
+import { summarizeConversation } from "./frontend/summary-client.js";
+import {
+  addRecord,
+  makeRecord,
+  removeRecord,
+  renameRecord,
+  sanitizeList,
+} from "./frontend/conversations.js";
 import { detectLang, getStrings } from "./i18n.js";
 
 let lang = detectLang();
@@ -14,6 +22,14 @@ const form = document.getElementById("composer");
 const input = document.getElementById("input");
 const sendBtn = document.getElementById("send");
 const micBtn = document.getElementById("mic");
+const newBtn = document.getElementById("new-chat");
+const shareBtn = document.getElementById("share-chat");
+const convNav = document.getElementById("conversations");
+const convListEl = document.getElementById("conversation-list");
+const convTitleEl = document.getElementById("conversations-title");
+
+// Past conversations saved in this browser (newest first).
+let conversations = [];
 
 // --- Voice input ---
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -84,11 +100,12 @@ function applyI18n() {
   document.querySelector(".tagline").textContent = t.tagline;
   input.placeholder = t.placeholder;
   sendBtn.textContent = t.send;
-  document.getElementById("new-chat").textContent = t.new_chat;
-  const shareEl = document.getElementById("share-chat");
-  if (shareEl) shareEl.textContent = t.share;
+  if (newBtn) newBtn.textContent = t.new_chat;
+  if (shareBtn) shareBtn.textContent = t.share;
+  if (convTitleEl) convTitleEl.textContent = t.conversations_title;
+  renderConversationList();
+  updateShareState();
 }
-applyI18n();
 
 /** Switch the UI language if the model starts speaking a different language. */
 function switchLang(newLang) {
@@ -99,7 +116,8 @@ function switchLang(newLang) {
 }
 
 // Update the static welcome message if the language differs from the default English.
-if (lang !== "en") {
+function applyWelcomeLang() {
+  if (lang === "en") return;
   const welcomeBody = document.querySelector("#log .msg-assistant .msg-body");
   if (welcomeBody) {
     welcomeBody.innerHTML =
@@ -110,8 +128,10 @@ if (lang !== "en") {
 
 // The conversation lives in this browser only. We persist it to localStorage so
 // it survives reloads; nothing is stored on the server unless the reader uses
-// "share".
+// "share". Past conversations the reader has moved on from are kept in a
+// separate, browser-only list.
 const STORAGE_KEY = "philip:conversation";
+const CONVERSATIONS_KEY = "philip:conversations";
 
 function saveConversation() {
   try {
@@ -129,6 +149,24 @@ function clearStoredConversation() {
     localStorage.removeItem(STORAGE_KEY);
   } catch {
     /* storage may be unavailable (private mode) */
+  }
+}
+
+function loadConversations() {
+  try {
+    conversations = sanitizeList(
+      JSON.parse(localStorage.getItem(CONVERSATIONS_KEY) || "null"),
+    );
+  } catch {
+    conversations = [];
+  }
+}
+
+function saveConversations() {
+  try {
+    localStorage.setItem(CONVERSATIONS_KEY, JSON.stringify(conversations));
+  } catch (e) {
+    console.warn("[philip] could not save conversation list", e);
   }
 }
 
@@ -150,11 +188,13 @@ function renderMessages(messages) {
   const welcomeEl = log.firstElementChild?.cloneNode(true) ?? null;
   log.innerHTML = "";
   if (welcomeEl) log.appendChild(welcomeEl);
+  state.messages = [];
   for (const m of messages) {
     addMessage(state, m.role, m.content);
     addBubble(m.role, m.content);
   }
   log.scrollTop = log.scrollHeight;
+  updateShareState();
 }
 
 /** Restore this browser's working conversation from localStorage. */
@@ -196,6 +236,11 @@ async function loadSharedConversation(id) {
   }
 }
 
+// --- Boot ---
+loadConversations();
+applyI18n();
+applyWelcomeLang();
+
 // On load: a ?c=... link opens a shared snapshot (forked into local storage);
 // otherwise restore this browser's own conversation. Either way we drop the
 // ?c= param so a later reload resumes the local copy, not the snapshot.
@@ -209,6 +254,9 @@ if (urlId) {
 } else {
   restoreConversation();
 }
+
+renderConversationList();
+updateShareState();
 
 async function send(text) {
   const trimmed = text.trim();
@@ -260,6 +308,8 @@ async function send(text) {
   // Persist the conversation to this browser.
   saveConversation();
   setBusy(false);
+  // The reader has now had a reply — sharing becomes available.
+  updateShareState();
 }
 
 function setBusy(busy) {
@@ -281,31 +331,168 @@ input.addEventListener("keydown", (e) => {
   }
 });
 
-const newBtn = document.getElementById("new-chat");
+// --- Saved conversations -------------------------------------------------
+
+/**
+ * Whether the active conversation is worth saving / sharing: it must have a
+ * reader turn and a non-empty reply from Philip.
+ */
+function hasReply() {
+  const hasUser = state.messages.some(
+    (m) => m.role === "user" && m.content.trim(),
+  );
+  const hasAssistant = state.messages.some(
+    (m) => m.role === "assistant" && m.content.trim(),
+  );
+  return hasUser && hasAssistant;
+}
+
+/**
+ * Move the active conversation into the saved list, labelling it with an
+ * LLM-generated title + verse-referencing summary (falling back to the first
+ * user turn when the summariser is unavailable). No-op for empty conversations.
+ */
+async function archiveActive() {
+  if (!hasReply()) return;
+  const messages = toHistory(state);
+  const recordLang = lang;
+  const { title, summary } = await summarizeConversation({ messages, lang });
+  const record = makeRecord({ messages, lang: recordLang, title, summary });
+  conversations = addRecord(conversations, record);
+  saveConversations();
+  renderConversationList();
+}
+
+/** Reset the active conversation to a clean slate (welcome bubble only). */
+function resetActive() {
+  clearStoredConversation();
+  renderMessages([]);
+  input.focus();
+}
+
+function renderConversationList() {
+  if (!convListEl || !convNav) return;
+  convListEl.innerHTML = "";
+  if (conversations.length === 0) {
+    // Keep the start page thin: the list only appears once there's something in it.
+    convNav.hidden = true;
+    return;
+  }
+  convNav.hidden = false;
+  for (const c of conversations) {
+    const li = document.createElement("li");
+    li.className = "conversation-item";
+
+    const open = document.createElement("button");
+    open.type = "button";
+    open.className = "conversation-open";
+    const titleEl = document.createElement("span");
+    titleEl.className = "conversation-name";
+    titleEl.textContent = c.title || t.conversation_untitled;
+    open.appendChild(titleEl);
+    if (c.summary) {
+      const sumEl = document.createElement("span");
+      sumEl.className = "conversation-summary";
+      sumEl.textContent = c.summary;
+      open.appendChild(sumEl);
+    }
+    open.addEventListener("click", () => openConversation(c.id));
+
+    const actions = document.createElement("div");
+    actions.className = "conversation-actions";
+
+    const renameBtn = document.createElement("button");
+    renameBtn.type = "button";
+    renameBtn.className = "conversation-action";
+    renameBtn.textContent = t.rename;
+    renameBtn.addEventListener("click", () => renameConversation(c.id));
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "conversation-action";
+    deleteBtn.textContent = t.delete;
+    deleteBtn.addEventListener("click", () => deleteConversation(c.id));
+
+    actions.append(renameBtn, deleteBtn);
+    li.append(open, actions);
+    convListEl.appendChild(li);
+  }
+}
+
+/** Load a saved conversation into the active view, archiving the current one. */
+async function openConversation(id) {
+  const target = conversations.find((c) => c.id === id);
+  if (!target) return;
+  await archiveActive();
+  conversations = removeRecord(conversations, id);
+  saveConversations();
+  if (typeof target.lang === "string") switchLang(target.lang);
+  renderMessages(target.messages);
+  saveConversation();
+  renderConversationList();
+  log.scrollTop = 0;
+}
+
+function renameConversation(id) {
+  const current = conversations.find((c) => c.id === id);
+  const next = window.prompt(t.rename_prompt, current?.title || "");
+  if (next == null) return;
+  conversations = renameRecord(conversations, id, next);
+  saveConversations();
+  renderConversationList();
+}
+
+function deleteConversation(id) {
+  if (!window.confirm(t.delete_confirm)) return;
+  conversations = removeRecord(conversations, id);
+  saveConversations();
+  renderConversationList();
+}
+
 if (newBtn) {
-  newBtn.addEventListener("click", (e) => {
+  newBtn.addEventListener("click", async (e) => {
     e.preventDefault();
-    // Forget the browser-stored conversation, then reload to a clean slate.
-    clearStoredConversation();
+    if (newBtn.dataset.busy === "1") return;
+    const wasActive = hasReply();
+    if (wasActive) {
+      newBtn.dataset.busy = "1";
+      newBtn.textContent = t.saving;
+      try {
+        await archiveActive();
+      } finally {
+        newBtn.dataset.busy = "";
+        newBtn.textContent = t.new_chat;
+      }
+    }
+    resetActive();
     const url = new URL(location.href);
     url.searchParams.delete("c");
-    location.href = url.toString();
+    history.replaceState(null, "", url.toString());
   });
 }
 
 // --- Share: explicit, opt-in server snapshot ---
 // Conversations are browser-only; "share" is the one action that copies the
-// current conversation to the server, returning a short, expiring link.
-const shareBtn = document.getElementById("share-chat");
+// current conversation to the server, returning a short, expiring link. It only
+// becomes available once the reader has had a first reply from Philip.
+function updateShareState() {
+  if (!shareBtn) return;
+  const ready = hasReply();
+  shareBtn.classList.toggle("disabled", !ready);
+  shareBtn.setAttribute("aria-disabled", String(!ready));
+  shareBtn.title = ready ? t.share : t.share_disabled;
+}
+
 if (shareBtn) {
   shareBtn.addEventListener("click", async (e) => {
     e.preventDefault();
+    if (shareBtn.classList.contains("disabled")) return;
     const messages = toHistory(state);
     if (messages.length === 0) {
       flashShare(t.share_empty);
       return;
     }
-    shareBtn.disabled = true;
+    shareBtn.classList.add("disabled");
     try {
       const res = await fetch("/api/share", {
         method: "POST",
@@ -329,7 +516,7 @@ if (shareBtn) {
       console.error("[philip] share failed", err);
       flashShare(t.share_failed);
     } finally {
-      shareBtn.disabled = false;
+      updateShareState();
     }
   });
 }

@@ -144,6 +144,68 @@ test.describe("text chat", () => {
     );
   });
 
+  test("share is disabled until the first reply, then enabled", async ({ page }) => {
+    await mockChatStream(page, ["A reply."]);
+    await page.goto("/");
+
+    // On a fresh start page, share is present but inert.
+    const share = page.locator("#share-chat");
+    await expect(share).toHaveClass(/disabled/);
+
+    await page.locator("#input").fill("Hello");
+    await page.locator("#send").click();
+    await expect(page.locator(".msg-assistant .msg-body").last()).toContainText(
+      "A reply.",
+    );
+
+    // After the first reply it becomes available.
+    await expect(share).not.toHaveClass(/disabled/);
+  });
+
+  test("starting a new chat archives the current one with an LLM summary", async ({
+    page,
+  }) => {
+    await mockChatStream(page, ["A reply about grace."]);
+    await page.route("/api/summary", async (route) => {
+      await route.fulfill({
+        status: 200,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title: "Grace in Ephesians",
+          summary: "Discussed grace in Ephesians 2:8.",
+        }),
+      });
+    });
+    await page.goto("/");
+
+    // No saved-conversations list on a thin start page.
+    await expect(page.locator("#conversations")).toBeHidden();
+
+    await page.locator("#input").fill("Tell me about grace");
+    await page.locator("#send").click();
+    await expect(page.locator(".msg-assistant .msg-body").last()).toContainText(
+      "A reply about grace.",
+    );
+
+    // Start a new conversation: the current one moves into the list.
+    await page.locator("#new-chat").click();
+
+    const item = page.locator(".conversation-item").first();
+    await expect(page.locator("#conversations")).toBeVisible();
+    await expect(item.locator(".conversation-name")).toHaveText("Grace in Ephesians");
+    await expect(item.locator(".conversation-summary")).toHaveText(
+      "Discussed grace in Ephesians 2:8.",
+    );
+
+    // The active log was reset to the welcome bubble only.
+    await expect(page.locator(".msg-user")).toHaveCount(0);
+
+    // Delete removes it from the list, hiding the (now empty) panel.
+    page.once("dialog", (d) => d.accept());
+    await item.locator(".conversation-action", { hasText: "delete" }).click();
+    await expect(page.locator("#conversations")).toBeHidden();
+  });
+
   test("share posts a snapshot and confirms with the user", async ({ page }) => {
     await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
     await mockChatStream(page, ["A reply."]);

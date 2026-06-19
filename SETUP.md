@@ -7,10 +7,16 @@ quotation in the **bundled World English Bible** (`public/bible/web/*.json`)
 
 **Conversations live in the reader's browser**, not on the server. The full
 history is kept in `localStorage` and sent with every `/api/chat` turn; the
-server persists no conversation content. The only exception is the **explicit,
-opt-in "share"** action (`POST /api/share`), which stores a snapshot the reader
-deliberately chose to publish and returns a short, expiring link
-(`/?c=<id>` → `GET /api/share/:id`). Snapshots expire after 30 days.
+server persists no conversation content. Past conversations the reader has moved
+on from are kept in a separate, browser-only list (`philip:conversations`):
+clicking **new** archives the current chat into that list with an LLM-generated
+title and a one-line summary that references the Bible verses last discussed
+(`POST /api/summary`, which — like `/api/chat` — receives the browser-owned
+history and stores nothing). The only path that leaves the browser is the
+**explicit, opt-in "share"** action (`POST /api/share`), enabled once the reader
+has had a first reply. It stores a snapshot the reader deliberately chose to
+publish and returns a short, expiring link (`/?c=<id>` → `GET /api/share/:id`).
+Snapshots expire after 30 days.
 
 ## Prerequisites
 
@@ -57,7 +63,7 @@ credits, so it is bounded by **D1-backed usage caps**:
   `MAX_MESSAGES_PER_CONVERSATION`), derived from the submitted history
 - per IP per UTC day: max chat requests (default **300**, override with
   `MAX_MESSAGES_PER_IP_PER_DAY`) — the true, non-spoofable ceiling, shared by
-  `/api/chat` and `/api/share`
+  `/api/chat`, `/api/share`, and `/api/summary`
 
 Exceeding either returns HTTP 429 with a friendly message. The counters live in
 the `ip_daily_usage` table (`migrations/0002_ip_daily_usage.sql`).
