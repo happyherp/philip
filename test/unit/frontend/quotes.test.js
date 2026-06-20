@@ -132,6 +132,31 @@ describe("buildQuoteElement", () => {
     expect(el.querySelector(".quote-attrib").textContent).toBe("— WEB");
   });
 
+  it("prefixes each verse with its number on block quotes", async () => {
+    const { impl } = fetchStub({ "/bible/web/john.json": JOHN_WEB });
+    const [marker] = findMarkers("{{quote John 8:31-32 @web}}");
+    const el = buildQuoteElement(marker, "web", impl);
+    document.body.appendChild(el);
+    await flush();
+
+    const nums = [...el.querySelectorAll(".quote-versenum")].map((n) => n.textContent);
+    expect(nums).toEqual(["31", "32"]);
+    // The counter sits right before its verse, not woven into the scripture text.
+    expect(el.querySelector(".quote-text").textContent).toBe(
+      "31If you remain in my word, then you are truly my disciples. " +
+        "32You will know the truth, and the truth will make you free.",
+    );
+  });
+
+  it("does not show verse counters on inline quotes", async () => {
+    const { impl } = fetchStub({ "/bible/web/john.json": JOHN_WEB });
+    const [marker] = findMarkers("{{q John 8:32 @web}}");
+    const el = buildQuoteElement(marker, "web", impl);
+    document.body.appendChild(el);
+    await flush();
+    expect(el.querySelector(".quote-versenum")).toBeNull();
+  });
+
   it("fills synchronously from the cache and fetches each book once", async () => {
     const { impl, calls } = fetchStub({ "/bible/web/john.json": JOHN_WEB });
     const [marker] = findMarkers("{{q John 8:32 @web}}");

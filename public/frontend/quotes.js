@@ -161,7 +161,11 @@ export function clearQuoteCache() {
   failedBooks.clear();
 }
 
-/** Collect the verse texts for a parsed reference from a CompactBook. */
+/**
+ * Collect the verses for a parsed reference from a CompactBook, each as a
+ * `{ num, text }` pair so block quotes can show the verse number — the counter
+ * familiar from a printed Bible.
+ */
 function collectVerses(json, ref) {
   const verses = [];
   for (let c = ref.startChapter; c <= ref.endChapter; c++) {
@@ -173,11 +177,16 @@ function collectVerses(json, ref) {
     const lo = c === ref.startChapter && ref.startVerse != null ? ref.startVerse : -Infinity;
     const hi = c === ref.endChapter && ref.endVerse != null ? ref.endVerse : Infinity;
     for (const v of nums) {
-      if (v >= lo && v <= hi) verses.push(chapter[String(v)]);
+      if (v >= lo && v <= hi) verses.push({ num: v, text: chapter[String(v)] });
       if (verses.length > MAX_VERSES) return verses;
     }
   }
   return verses;
+}
+
+/** Plain joined text of collected verses (for inline quotes and excerpt matching). */
+function versesText(verses) {
+  return verses.map((v) => v.text).join(" ");
 }
 
 // --- "Read in context" portal links ---
@@ -244,8 +253,17 @@ function fillBlock(el, verses, refLabel, meta, url) {
 
   const text = document.createElement("span");
   text.className = "quote-text";
-  text.textContent = verses.join(" ");
   applyTextAttrs(text, meta);
+  // Prefix each verse with its number — the superscript counter familiar from a
+  // printed Bible. Numbers come from the bundled JSON, never the model; the
+  // verse text itself is still set via textContent and can't be altered.
+  verses.forEach((verse, i) => {
+    if (i > 0) text.appendChild(document.createTextNode(" "));
+    const num = document.createElement("sup");
+    num.className = "quote-versenum";
+    num.textContent = String(verse.num);
+    text.append(num, document.createTextNode(verse.text));
+  });
 
   const attrib = document.createElement("span");
   attrib.className = "quote-attrib";
@@ -260,7 +278,7 @@ function fillInline(el, verses, refLabel, meta, url) {
 
   const text = document.createElement("span");
   text.className = "quote-text";
-  text.textContent = `“${verses.join(" ")}”`;
+  text.textContent = `“${versesText(verses)}”`;
   applyTextAttrs(text, meta);
 
   el.append(text, document.createTextNode(" ("));
@@ -393,7 +411,7 @@ export function matchExcerpt(excerpt, verses) {
   const needle = normalizeForMatch(excerpt);
   if (needle.length === 0) return null;
 
-  const originalJoined = verses.join(" ").normalize("NFC");
+  const originalJoined = versesText(verses).normalize("NFC");
   const { norm, map } = normalizeWithMap(originalJoined);
   const { start, end, cost } = approxSubstringMatch(needle, norm);
   if (cost > maxEdits(needle.length)) return null;
