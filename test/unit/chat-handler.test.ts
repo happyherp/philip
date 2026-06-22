@@ -98,6 +98,32 @@ describe("streamChatResponse", () => {
     }
   });
 
+  it("emits a status event naming the passage and translation being read", async () => {
+    const { fetchImpl } = fetchSequence([
+      sseResponse([
+        toolEvent(0, {
+          id: "call1",
+          name: "get_passage",
+          arguments: JSON.stringify({ reference: "john 3" }),
+        }),
+        DONE,
+      ]),
+      sseResponse([contentEvent("done"), DONE]),
+    ]);
+    const { response, pump } = streamChatResponse({
+      history: [{ role: "user", content: "Read John 3" }],
+      apiKey: "test",
+      model: "test/model",
+      fetchImpl,
+      assetFetch: fileAssetFetch(),
+    });
+    const body = await readSSE(response);
+    await pump;
+    expect(body).toContain(
+      'data: {"status":{"type":"reading","reference":"John 3","translation":"WEB"}}',
+    );
+  });
+
   it("emits an error event when history is empty", async () => {
     const { fetchImpl } = fetchSequence([]);
     const { response, pump } = streamChatResponse({

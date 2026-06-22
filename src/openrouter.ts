@@ -2,7 +2,7 @@
 // Everything external (the HTTP fetch and the asset/passage lookup) is injected,
 // so the whole loop is unit-testable with canned SSE streams and no network.
 
-import { type AssetFetch, getPassage, passageToText } from "./bible.ts";
+import { type AssetFetch, formatReference, getPassage, parseReference, passageToText } from "./bible.ts";
 import { GET_PASSAGE_TOOL, SYSTEM_PROMPT } from "./philip.ts";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -80,6 +80,11 @@ export interface RunChatDeps {
   translationId?: string;
   /** Called each time the model uses a translation (via get_passage), so the caller can update UI language. */
   onTranslationUsed?: (translationId: string) => void | Promise<void>;
+  /**
+   * Called when the model requests a passage, *before* it is fetched, so the UI
+   * can show progress (e.g. "Reading John 3 in WEB") instead of an empty wait.
+   */
+  onPassageRequest?: (info: { reference: string; translationId: string }) => void | Promise<void>;
 }
 
 export interface RunChatResult {
@@ -158,6 +163,10 @@ export async function runChat(history: ChatMessage[], deps: RunChatDeps): Promis
       // and loop so it can compose the answer around verified text.
       messages.push({ role: "assistant", content: turn.content || null, tool_calls: turn.toolCalls });
       for (const call of turn.toolCalls) {
+        if (deps.onPassageRequest) {
+          const info = describePassageCall(call, deps.translationId ?? "web");
+          if (info) await deps.onPassageRequest(info);
+        }
         const { text, translationUsed } = await executeToolCall(call, deps.assetFetch, deps.translationId ?? "web");
         if (translationUsed && deps.onTranslationUsed) {
           await deps.onTranslationUsed(translationUsed);
@@ -177,6 +186,29 @@ export async function runChat(history: ChatMessage[], deps: RunChatDeps): Promis
   }
 
   throw new Error(`Exceeded ${maxIterations} tool-call iterations without a final answer.`);
+}
+
+/**
+ * Inspect a streamed tool call and, if it's a parseable get_passage request,
+ * return a canonical reference + translation id for a progress message. Returns
+ * null for anything we can't describe yet (the model will get an error result
+ * and self-correct, so there's nothing useful to show).
+ */
+function describePassageCall(
+  call: ToolCall,
+  defaultTranslationId: string,
+): { reference: string; translationId: string } | null {
+  if (call.function.name !== "get_passage") return null;
+  let args: { reference?: string; translation?: string };
+  try {
+    args = JSON.parse(call.function.arguments || "{}");
+  } catch {
+    return null;
+  }
+  if (!args.reference) return null;
+  const parsed = parseReference(args.reference);
+  const reference = parsed ? formatReference(parsed) : args.reference;
+  return { reference, translationId: args.translation || defaultTranslationId };
 }
 
 interface ToolCallResult {

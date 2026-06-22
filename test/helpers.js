@@ -18,4 +18,7 @@ export function tokenEvent(text) {
 export function errorEvent(message) {
   return `data: ${JSON.stringify({ error: message })}\n\n`;
 }
+export function statusEvent(status) {
+  return `data: ${JSON.stringify({ status })}\n\n`;
+}
 export const doneEvent = `data: ${JSON.stringify({ done: true })}\n\n`;

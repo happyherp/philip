@@ -67,6 +67,12 @@ export function streamChatResponse(opts: StreamChatOptions): StreamChatResult {
           // study must not flip the frontend i18n.
           if (meta && !meta.scholarly) send({ lang: meta.lang });
         },
+        onPassageRequest: ({ reference, translationId }) => {
+          // Tell the browser which passage Philip is reading, so it can show
+          // progress instead of an empty bubble during the tool call.
+          const meta = translationById(translationId);
+          send({ status: { type: "reading", reference, translation: meta?.name ?? translationId } });
+        },
       });
       await send({ done: true });
     } catch (err) {

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { streamChat } from "../../../public/frontend/chat-client.js";
-import { doneEvent, errorEvent, sseResponse, tokenEvent } from "../../helpers.js";
+import { doneEvent, errorEvent, sseResponse, statusEvent, tokenEvent } from "../../helpers.js";
 
 describe("streamChat", () => {
   it("sends messages and streams tokens, then completes once", async () => {
@@ -23,6 +23,25 @@ describe("streamChat", () => {
     const init = fetchImpl.mock.calls[0][1];
     expect(init.method).toBe("POST");
     expect(JSON.parse(init.body)).toEqual({ messages: [{ role: "user", content: "hi" }] });
+  });
+
+  it("delivers status events to onStatus", async () => {
+    const status = { type: "reading", reference: "John 3", translation: "WEB" };
+    const fetchImpl = vi.fn(async () =>
+      sseResponse([statusEvent(status), tokenEvent("For God so loved…"), doneEvent]),
+    );
+    const statuses = [];
+    const tokens = [];
+
+    await streamChat({
+      messages: [{ role: "user", content: "Read John 3" }],
+      onToken: (t) => tokens.push(t),
+      onStatus: (s) => statuses.push(s),
+      fetchImpl,
+    });
+
+    expect(statuses).toEqual([status]);
+    expect(tokens).toEqual(["For God so loved…"]);
   });
 
   it("surfaces server error events", async () => {

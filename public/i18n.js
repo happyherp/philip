@@ -27,6 +27,8 @@ export const I18N = {
     rename_prompt: "Rename this conversation:",
     delete_confirm: "Delete this saved conversation?",
     saving: "saving…",
+    reading: "Reading {reference} in {translation}",
+    read: "Read {reference} in {translation}",
   },
   es: {
     title: "Felipe — leer la Biblia juntos",
@@ -53,6 +55,8 @@ export const I18N = {
     rename_prompt: "Renombrar esta conversación:",
     delete_confirm: "¿Eliminar esta conversación guardada?",
     saving: "guardando…",
+    reading: "Leyendo {reference} en {translation}",
+    read: "Leído {reference} en {translation}",
   },
   de: {
     title: "Philipp — die Bibel gemeinsam lesen",
@@ -79,6 +83,8 @@ export const I18N = {
     rename_prompt: "Dieses Gespräch umbenennen:",
     delete_confirm: "Dieses gespeicherte Gespräch löschen?",
     saving: "speichern…",
+    reading: "Lese {reference} in {translation}",
+    read: "{reference} in {translation} gelesen",
   },
 };
 

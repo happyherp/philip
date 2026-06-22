@@ -1,5 +1,5 @@
 // Wires the DOM to the conversation state, renderer, and SSE client.
-import { addMessage, appendToken, createState, toHistory } from "./frontend/state.js";
+import { addMessage, appendToken, createState, insertRead, toHistory } from "./frontend/state.js";
 import { renderMessageInto } from "./frontend/render.js";
 import { streamChat } from "./frontend/chat-client.js";
 import { summarizeConversation } from "./frontend/summary-client.js";
@@ -140,6 +140,33 @@ function addBubble(role, markdown) {
   return { wrap, body };
 }
 
+/**
+ * Set the text of a read note, e.g. "Reading John 3 in WEB" while a fetch is in
+ * flight, or "Read John 3 in WEB" once it's done. The `reading` flag adds the
+ * pulsing-dots indicator (shared `.thinking` style).
+ */
+function setReadText(el, reference, translation, reading) {
+  el.classList.toggle("thinking", reading);
+  el.textContent = (reading ? t.reading : t.read)
+    .replace("{reference}", reference)
+    .replace("{translation}", translation);
+}
+
+/** Build a read-note line element (not yet attached to the log). */
+function makeReadEl(reference, translation, reading) {
+  const el = document.createElement("div");
+  el.className = "read-note";
+  setReadText(el, reference, translation, reading);
+  return el;
+}
+
+/** Append a finalized ("Read …") note to the log, above the trailing spacer. */
+function addReadBubble(reference, translation) {
+  const el = makeReadEl(reference, translation, false);
+  log.insertBefore(el, ensureSpacer());
+  return el;
+}
+
 /** Render a list of stored messages into the log, keeping the static welcome bubble. */
 function renderMessages(messages) {
   const welcomeEl = log.firstElementChild?.cloneNode(true) ?? null;
@@ -147,8 +174,13 @@ function renderMessages(messages) {
   if (welcomeEl) log.appendChild(welcomeEl);
   state.messages = [];
   for (const m of messages) {
-    addMessage(state, m.role, m.content);
-    addBubble(m.role, m.content);
+    if (m.role === "read") {
+      state.messages.push({ role: "read", reference: m.reference, translation: m.translation });
+      addReadBubble(m.reference, m.translation);
+    } else {
+      addMessage(state, m.role, m.content);
+      addBubble(m.role, m.content);
+    }
   }
   log.scrollTop = log.scrollHeight;
   updateShareState();
@@ -229,8 +261,10 @@ async function send(text) {
   // reply is streamed back into the placeholder we add next).
   const outgoing = toHistory(state);
 
-  const assistant = addMessage(state, "assistant", "");
-  const { body: bubble } = addBubble("assistant", "");
+  // The assistant turn is added to state lazily, on the first token, so any
+  // "read" notes recorded during tool calls are ordered before the answer.
+  let assistant = null;
+  const { wrap: assistantWrap, body: bubble } = addBubble("assistant", "");
   bubble.classList.add("thinking");
 
   // Anchor this turn near the top of the log and reserve a screen of empty
@@ -251,25 +285,52 @@ async function send(text) {
     if (!frame) frame = requestAnimationFrame(flush);
   };
 
+  // The verse fetch in progress, shown as a "Reading …" line above the answer.
+  // When the next read starts (or the answer begins) it becomes a persisted
+  // "Read …" note that stays in the conversation history.
+  let pendingRead = null;
+  const finalizeRead = () => {
+    if (!pendingRead) return;
+    const { el, reference, translation } = pendingRead;
+    setReadText(el, reference, translation, false);
+    insertRead(state, reference, translation, assistant);
+    pendingRead = null;
+  };
+
   let failure = null;
   await streamChat({
     messages: outgoing,
     lang,
     onLang: (newLang) => switchLang(newLang),
     onToken: (token) => {
+      finalizeRead();
+      if (!assistant) assistant = addMessage(state, "assistant", "");
       bubble.classList.remove("thinking");
       appendToken(state, token);
       scheduleRender();
+    },
+    onStatus: (status) => {
+      if (status?.type !== "reading") return;
+      // A new read starting means the previous one (if any) is complete.
+      finalizeRead();
+      const reference = status.reference ?? "";
+      const translation = status.translation ?? "";
+      const el = makeReadEl(reference, translation, true);
+      log.insertBefore(el, assistantWrap);
+      pendingRead = { el, reference, translation };
+      // The read line now carries the activity indicator instead of the bubble.
+      bubble.classList.remove("thinking");
     },
     onError: (message, info) => {
       failure = { message, code: info?.code };
     },
   });
 
-  // The stream is done: drop any pending frame and render the final content
-  // once, then release the reserved space so a finished chat has no big gap.
+  // The stream is done: settle any in-flight read, drop any pending frame and
+  // render the final content once, then release the reserved space.
+  finalizeRead();
   if (frame) cancelAnimationFrame(frame);
-  renderMessageInto(bubble, assistant.content, { lang });
+  renderMessageInto(bubble, assistant ? assistant.content : "", { lang });
   ensureSpacer().style.height = "";
 
   if (failure) {
@@ -284,6 +345,9 @@ async function send(text) {
     err.className = "error";
     err.textContent = `${t.error_prefix}${failure.message}`;
     bubble.appendChild(err);
+  } else if (!assistant) {
+    // Philip read passages but produced no answer text — drop the empty bubble.
+    assistantWrap.remove();
   }
 
   // Persist the conversation to this browser.
