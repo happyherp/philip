@@ -318,9 +318,20 @@ async function send(text) {
     lang,
     onLang: (newLang) => switchLang(newLang),
     onToken: (token) => {
-      bubble.classList.remove("thinking");
+      bubble.classList.remove("thinking", "status");
       appendToken(state, token);
       scheduleRender();
+    },
+    onStatus: (status) => {
+      // Show what Philip is doing while a tool call runs (no text yet). The
+      // pulsing dots come from the `.thinking` ::after, so this reads as
+      // e.g. "Reading John 3 in WEB · · ·".
+      if (status?.type === "reading" && !assistant.content) {
+        bubble.classList.add("thinking", "status");
+        bubble.textContent = t.reading
+          .replace("{reference}", status.reference ?? "")
+          .replace("{translation}", status.translation ?? "");
+      }
     },
     onError: (message, info) => {
       failure = { message, code: info?.code };

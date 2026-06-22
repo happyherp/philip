@@ -389,6 +389,11 @@ a.quote-ref:hover { color: var(--accent); }
 }
 .msg-body a { color: var(--accent); }
 
+.msg-body.status {
+  color: var(--muted);
+  font-style: italic;
+}
+
 .thinking::after {
   content: "·  ·  ·";
   letter-spacing: 0.2em;

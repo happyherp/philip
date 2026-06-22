@@ -9,6 +9,7 @@
  * @param {Array<{role:string,content:string}>} opts.messages - full conversation history
  * @param {string} [opts.lang] - ISO 639-1 language code ("en", "es", "de")
  * @param {(token: string) => void} opts.onToken
+ * @param {(status: {type: string, reference?: string, translation?: string}) => void} [opts.onStatus] - progress updates (e.g. a passage being read)
  * @param {(lang: string) => void} [opts.onLang] - called when the model chooses a language/translation
  * @param {() => void} [opts.onDone]
  * @param {(message: string, info?: {status?: number, code?: string}) => void} [opts.onError]
@@ -19,6 +20,7 @@ export async function streamChat({
   messages,
   lang,
   onToken,
+  onStatus,
   onLang,
   onDone,
   onError,
@@ -83,6 +85,7 @@ export async function streamChat({
         continue;
       }
       if (typeof evt.token === "string") onToken(evt.token);
+      else if (evt.status && typeof evt.status === "object") onStatus?.(evt.status);
       else if (typeof evt.lang === "string") onLang?.(evt.lang);
       else if (evt.error) {
         finished = true;

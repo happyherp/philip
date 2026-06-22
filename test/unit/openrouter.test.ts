@@ -80,6 +80,30 @@ describe("runChat tool loop", () => {
     expect(secondBody.messages[0].role).toBe("system");
   });
 
+  it("reports the passage being read (canonical reference + translation) before fetching", async () => {
+    const toolTurn = sseResponse([
+      toolEvent(0, { id: "c1", name: "get_passage", arguments: '{"reference":"john 3"}' }),
+      DONE,
+    ]);
+    const answerTurn = sseResponse([contentEvent("Done."), DONE]);
+    const { fetchImpl } = fetchSequence([toolTurn, answerTurn]);
+
+    const requests: Array<{ reference: string; translationId: string }> = [];
+    await runChat([{ role: "user", content: "Read John 3" }], {
+      apiKey: "test",
+      model: "test/model",
+      fetchImpl,
+      assetFetch: fileAssetFetch(),
+      onToken: () => {},
+      onPassageRequest: (info) => {
+        requests.push(info);
+      },
+    });
+
+    // Reference is normalized to canonical form; translation falls back to web.
+    expect(requests).toEqual([{ reference: "John 3", translationId: "web" }]);
+  });
+
   it("feeds a parse error back to the model so it can retry", async () => {
     const badTool = sseResponse([
       toolEvent(0, { id: "c1", name: "get_passage", arguments: '{"reference":"bogus"}' }),
