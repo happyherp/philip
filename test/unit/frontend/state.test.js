@@ -3,6 +3,7 @@ import {
   addMessage,
   appendToken,
   createState,
+  insertRead,
   toHistory,
 } from "../../../public/frontend/state.js";
 
@@ -36,5 +37,35 @@ describe("conversation state", () => {
       { role: "user", content: "a" },
       { role: "assistant", content: "b" },
     ]);
+  });
+
+  it("inserts read notes before the assistant turn and keeps them out of history", () => {
+    const s = createState();
+    addMessage(s, "user", "Read John 3");
+    const assistant = addMessage(s, "assistant", "");
+    insertRead(s, "John 3", "WEB", assistant);
+    insertRead(s, "John 3:16", "WEB", assistant);
+
+    // Reads sit before the answer, in order.
+    expect(s.messages.map((m) => m.role)).toEqual([
+      "user",
+      "read",
+      "read",
+      "assistant",
+    ]);
+    expect(s.messages[1]).toEqual({ role: "read", reference: "John 3", translation: "WEB" });
+
+    // The model never sees the read notes.
+    expect(toHistory(s)).toEqual([
+      { role: "user", content: "Read John 3" },
+      { role: "assistant", content: "" },
+    ]);
+  });
+
+  it("appends a read note at the end when there is no assistant turn yet", () => {
+    const s = createState();
+    addMessage(s, "user", "Read John 3");
+    insertRead(s, "John 3", "WEB", null);
+    expect(s.messages.map((m) => m.role)).toEqual(["user", "read"]);
   });
 });

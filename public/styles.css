@@ -389,9 +389,11 @@ a.quote-ref:hover { color: var(--accent); }
 }
 .msg-body a { color: var(--accent); }
 
-.msg-body.status {
+.read-note {
   color: var(--muted);
   font-style: italic;
+  font-size: 0.9em;
+  margin: 0.2rem 0 0.4rem;
 }
 
 .thinking::after {
