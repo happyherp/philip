@@ -456,3 +456,19 @@ a.quote-ref:hover { color: var(--accent); }
   cursor: pointer;
 }
 #send:disabled { opacity: 0.5; cursor: default; }
+
+/* Mobile: give the reading area more room. While the reader scrolls down
+   through a reply the header slides up out of the way — its space reclaimed by
+   the log via a negative margin — and the moment they scroll up it slides back.
+   The collapse height (--topbar-h) is measured in JS so it stays right across
+   languages and wrapping. Gated to phone widths; inert on wider screens. */
+@media (max-width: 640px) {
+  .topbar {
+    transition: margin-top 0.25s ease, opacity 0.25s ease;
+  }
+  body.header-hidden .topbar {
+    margin-top: calc(-1 * var(--topbar-h, 120px));
+    opacity: 0;
+    pointer-events: none;
+  }
+}

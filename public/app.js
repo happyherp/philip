@@ -626,4 +626,54 @@ function flashShare(text) {
   }, 4000);
 }
 
+// --- Mobile: auto-hide the header while reading -------------------------
+// The log is the scroll container, so we watch its scroll direction: scrolling
+// down past the header collapses it upward (the CSS reclaims its space), and any
+// upward scroll brings it straight back. The styling is gated to phone widths in
+// CSS, so this is effectively inert on wider screens.
+(function setupHeaderAutoHide() {
+  const topbar = document.querySelector(".topbar");
+  if (!topbar) return;
+
+  // Publish the header's height so the CSS knows how far to slide it up.
+  const measure = () => {
+    document.documentElement.style.setProperty(
+      "--topbar-h",
+      `${topbar.offsetHeight}px`,
+    );
+  };
+  measure();
+  window.addEventListener("resize", measure);
+
+  let lastTop = log.scrollTop;
+  let ticking = false;
+
+  const update = () => {
+    ticking = false;
+    const top = log.scrollTop;
+    const delta = top - lastTop;
+    // Ignore tiny jitters and rubber-band overscroll.
+    if (Math.abs(delta) < 4) return;
+    if (delta > 0 && top > topbar.offsetHeight) {
+      // Reading on, past the header: tuck it away.
+      document.body.classList.add("header-hidden");
+    } else if (delta < 0) {
+      // Any scroll back up reveals it again.
+      document.body.classList.remove("header-hidden");
+    }
+    lastTop = top;
+  };
+
+  log.addEventListener(
+    "scroll",
+    () => {
+      if (!ticking) {
+        ticking = true;
+        requestAnimationFrame(update);
+      }
+    },
+    { passive: true },
+  );
+})();
+
 input.focus();
