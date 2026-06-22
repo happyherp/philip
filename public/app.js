@@ -628,9 +628,10 @@ function flashShare(text) {
 
 // --- Mobile: auto-hide the header while reading -------------------------
 // The log is the scroll container, so we watch its scroll direction: scrolling
-// down past the header collapses it upward (the CSS reclaims its space), and any
-// upward scroll brings it straight back. The styling is gated to phone widths in
-// CSS, so this is effectively inert on wider screens.
+// down past the header slides it up out of view, and any upward scroll brings it
+// straight back. On mobile the header overlays the log (see styles.css), so this
+// toggle never reflows the reading content. The styling is gated to phone widths
+// in CSS, so this is effectively inert on wider screens.
 (function setupHeaderAutoHide() {
   const topbar = document.querySelector(".topbar");
   if (!topbar) return;
