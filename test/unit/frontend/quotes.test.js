@@ -333,6 +333,35 @@ describe("excerpt quotes", () => {
     expect(document.body.textContent).not.toContain("{{");
   });
 
+  it("opens a comparison popup on click showing the claim and the real text", async () => {
+    const { impl } = fetchStub({ "/bible/web/john.json": JOHN_WEB });
+    const [bad] = findMarkers('{{q John 8:32 @web "the truth will set you free"}}');
+    document.body.appendChild(buildQuoteElement(bad, "web", impl));
+    await flush();
+
+    const el = document.querySelector(".quote-bad");
+    expect(el.getAttribute("role")).toBe("button");
+    el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    const popup = document.querySelector(".quote-popup");
+    expect(popup).not.toBeNull();
+    // The model's claimed wording is shown verbatim...
+    expect(popup.querySelector(".quote-compare-claimed").textContent).toContain(
+      "the truth will set you free",
+    );
+    // ...alongside the passage's actual text from the bundled translation.
+    const block = popup.querySelector("blockquote.quote-block");
+    expect(block.querySelector(".quote-ref").textContent).toBe("John 8:32");
+    expect(block.querySelector(".quote-text").textContent).toContain("the truth will make you free");
+
+    // Toggling closed, then Escape after reopening.
+    el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(document.querySelector(".quote-popup")).toBeNull();
+    el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    expect(document.querySelector(".quote-popup")).toBeNull();
+  });
+
   it("excerpts spanning a verse boundary are accepted", async () => {
     const { impl } = fetchStub({ "/bible/web/john.json": JOHN_WEB });
     const [marker] = findMarkers(

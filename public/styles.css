@@ -344,6 +344,21 @@ blockquote.quote-block {
   border: 1px dashed #a04026;
   border-radius: 4px;
   padding: 0 0.35em;
+  cursor: pointer;
+}
+.quote-error.quote-bad:hover { background: rgba(160, 64, 38, 0.08); }
+/* Misquote comparison popup: what the model claimed vs the real passage. */
+.quote-compare-label {
+  font-size: 0.72em;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 6px 2px 2px;
+}
+.quote-compare-claimed {
+  margin: 0 2px 4px;
+  color: #a04026;
+  font-style: italic;
 }
 
 /* Reference links out to a portal (BibleGateway / STEP) for reading in context. */

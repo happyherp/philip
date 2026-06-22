@@ -426,10 +426,25 @@ export function matchExcerpt(excerpt, verses) {
   return { text: originalJoined.slice(origStart, origEnd).trim() };
 }
 
-function badQuotationSpan(refLabel, meta, excerpt) {
+/**
+ * A flagged misquote: the model's wording could not be found in the verse.
+ * Tappable so the reader can compare what the model claimed against the
+ * scripture — the desktop `title` tooltip is invisible on touch devices.
+ */
+function badQuotationSpan(refLabel, meta, excerpt, verses, url) {
   const span = errorSpan(`BAD QUOTATION (${refLabel}, ${meta.name})`);
   span.classList.add("quote-bad");
   span.setAttribute("title", `Not found in ${refLabel} (${meta.name}): “${excerpt}”`);
+  span.setAttribute("role", "button");
+  span.setAttribute("tabindex", "0");
+  const toggle = (e) => {
+    e.preventDefault();
+    toggleBadPopup(span, excerpt, verses, refLabel, meta, url);
+  };
+  span.addEventListener("click", toggle);
+  span.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") toggle(e);
+  });
   return span;
 }
 
@@ -444,22 +459,24 @@ function closePopup() {
   openPopup = null;
 }
 
-/** Show the whole passage as a block quote in a popover near the excerpt. */
-function togglePopup(anchor, verses, refLabel, meta, url) {
+/**
+ * Open a popover holding `content`, anchored below `anchor` and clamped to the
+ * viewport. Toggling the same anchor closes it; closes on outside click or
+ * Escape. Returns false when this call closed an already-open popup for the
+ * same anchor (so callers can treat a toggle as a no-op).
+ */
+function openPopupWith(anchor, content) {
   const wasOurs = openPopup && openPopup.anchor === anchor;
   closePopup();
-  if (wasOurs) return;
+  if (wasOurs) return false;
 
   const popup = document.createElement("div");
   popup.className = "quote-popup";
   popup.setAttribute("role", "dialog");
-  const block = document.createElement("blockquote");
-  block.className = "quote-block";
-  fillBlock(block, verses, refLabel, meta, url);
-  popup.appendChild(block);
+  popup.appendChild(content);
   document.body.appendChild(popup);
 
-  // Anchor below the excerpt, clamped to the viewport.
+  // Anchor below the trigger, clamped to the viewport.
   const rect = anchor.getBoundingClientRect();
   popup.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - popup.offsetHeight - 12)}px`;
   popup.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - popup.offsetWidth - 8))}px`;
@@ -473,6 +490,42 @@ function togglePopup(anchor, verses, refLabel, meta, url) {
   document.addEventListener("click", onDocClick, true);
   document.addEventListener("keydown", onKeydown, true);
   openPopup = { anchor, popup, onDocClick, onKeydown };
+  return true;
+}
+
+/** Show the whole passage as a block quote in a popover near the excerpt. */
+function togglePopup(anchor, verses, refLabel, meta, url) {
+  const block = document.createElement("blockquote");
+  block.className = "quote-block";
+  fillBlock(block, verses, refLabel, meta, url);
+  openPopupWith(anchor, block);
+}
+
+/**
+ * Show a side-by-side comparison for a flagged misquote: the phrase the model
+ * claimed to quote, and the passage's actual wording. Lets a reader on any
+ * device see exactly what was wrong, not just that something was.
+ */
+function toggleBadPopup(anchor, excerpt, verses, refLabel, meta, url) {
+  const content = document.createElement("div");
+  content.className = "quote-compare";
+
+  const quotedLabel = document.createElement("div");
+  quotedLabel.className = "quote-compare-label";
+  quotedLabel.textContent = "Quoted as";
+  const quoted = document.createElement("p");
+  quoted.className = "quote-compare-claimed";
+  quoted.textContent = `“${excerpt}”`;
+
+  const actualLabel = document.createElement("div");
+  actualLabel.className = "quote-compare-label";
+  actualLabel.textContent = "Actual text";
+  const block = document.createElement("blockquote");
+  block.className = "quote-block";
+  fillBlock(block, verses, refLabel, meta, url);
+
+  content.append(quotedLabel, quoted, actualLabel, block);
+  openPopupWith(anchor, content);
 }
 
 /**
@@ -588,7 +641,7 @@ export function buildQuoteElement(marker, defaultTranslationId, fetchImpl) {
     }
     if (excerpt) {
       const match = matchExcerpt(excerpt, verses);
-      if (!match) return badQuotationSpan(refLabel, meta, excerpt);
+      if (!match) return badQuotationSpan(refLabel, meta, excerpt, verses, url);
       fillExcerpt(el, verses, refLabel, meta, url, match.text);
     } else if (isBlock) {
       fillBlock(el, verses, refLabel, meta, url);
