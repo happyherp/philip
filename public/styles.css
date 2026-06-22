@@ -471,4 +471,9 @@ a.quote-ref:hover { color: var(--accent); }
   body.header-hidden .topbar {
     transform: translateY(-100%);
   }
+  /* On narrow screens, let the assistant's bubbles run closer to the right
+     edge so there's more room for text. User bubbles keep their inset. */
+  .msg:not(.msg-user) .msg-body {
+    max-width: 96%;
+  }
 }
