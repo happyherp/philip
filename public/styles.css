@@ -471,3 +471,28 @@ a.quote-ref:hover { color: var(--accent); }
   cursor: pointer;
 }
 #send:disabled { opacity: 0.5; cursor: default; }
+
+/* Mobile: give the reading area more room. The header floats over the top of
+   the log rather than taking a row in the flex column, so showing or hiding it
+   never reflows the reading content — that reflow is what made the text jump on
+   scroll-down. While the reader scrolls down through a reply the header slides
+   up out of view; the moment they scroll up it slides back. The log carries
+   matching top padding (--topbar-h, measured in JS so it stays right across
+   languages and wrapping) so the first message clears the bar when it's shown.
+   Gated to phone widths; inert on wider screens. */
+@media (max-width: 640px) {
+  .topbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 10;
+    transition: transform 0.25s ease;
+  }
+  .log {
+    padding-top: calc(var(--topbar-h, 120px) + 12px);
+  }
+  body.header-hidden .topbar {
+    transform: translateY(-100%);
+  }
+}
