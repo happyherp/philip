@@ -4,6 +4,35 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Philip — read the Bible together</title>
+    <!-- Resolve and apply the theme before first paint so there's no flash of
+         the wrong colors. Order of preference: the reader's saved choice, then
+         the OS preference if one is expressed, then the time of day (light
+         06:00–18:00, dark otherwise). app.js wires the toggle from here. -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem("philip:theme");
+          var theme;
+          if (stored === "light" || stored === "dark") {
+            theme = stored;
+          } else if (
+            window.matchMedia &&
+            (matchMedia("(prefers-color-scheme: dark)").matches ||
+              matchMedia("(prefers-color-scheme: light)").matches)
+          ) {
+            theme = matchMedia("(prefers-color-scheme: dark)").matches
+              ? "dark"
+              : "light";
+          } else {
+            var h = new Date().getHours();
+            theme = h >= 6 && h < 18 ? "light" : "dark";
+          }
+          document.documentElement.dataset.theme = theme;
+        } catch (e) {
+          document.documentElement.dataset.theme = "light";
+        }
+      })();
+    </script>
     <link rel="stylesheet" href="./styles.css" />
     <!-- Per-translation quote typefaces (graceful fallback to the body serif). -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -19,6 +48,7 @@
       <a href="#" id="toggle-conversations" class="chip" aria-expanded="false" aria-controls="conversations" title="Saved conversations" hidden>saved</a>
       <a href="#" id="share-chat" class="chip disabled" aria-disabled="true" title="Copy a link to this conversation">share</a>
       <a href="#" id="new-chat" class="chip" title="Start a fresh conversation">new</a>
+      <a href="#" id="theme-toggle" class="chip chip-theme" title="Switch theme" role="button">☾</a>
       <p class="tagline">“Do you understand what you are reading?” — Acts 8:30</p>
 
       <!-- Past conversations saved in this browser. Opened from the "saved"

@@ -27,6 +27,7 @@ const convNav = document.getElementById("conversations");
 const convListEl = document.getElementById("conversation-list");
 const convTitleEl = document.getElementById("conversations-title");
 const convToggleBtn = document.getElementById("toggle-conversations");
+const themeBtn = document.getElementById("theme-toggle");
 
 // Past conversations saved in this browser (newest first).
 let conversations = [];
@@ -45,8 +46,47 @@ function applyI18n() {
     convToggleBtn.title = t.conversations_title;
   }
   if (convTitleEl) convTitleEl.textContent = t.conversations_title;
+  updateThemeToggle();
   renderConversationList();
   updateShareState();
+}
+
+// --- Theme (light / dark) -----------------------------------------------
+// The initial theme is resolved before first paint by the inline script in
+// index.html (saved choice → OS preference → time of day) and applied via the
+// data-theme attribute on <html>. Here we only handle the manual toggle and
+// keep the chip's icon/label in sync.
+const THEME_KEY = "philip:theme";
+
+function currentTheme() {
+  return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+}
+
+function updateThemeToggle() {
+  if (!themeBtn) return;
+  const dark = currentTheme() === "dark";
+  // Show the icon for the theme you'd switch *to*, and label the action.
+  themeBtn.textContent = dark ? "☀" : "☾";
+  const label = dark ? t.theme_to_light : t.theme_to_dark;
+  themeBtn.title = label;
+  themeBtn.setAttribute("aria-label", label);
+}
+
+function setTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  try {
+    localStorage.setItem(THEME_KEY, theme);
+  } catch {
+    /* storage may be unavailable (private mode) */
+  }
+  updateThemeToggle();
+}
+
+if (themeBtn) {
+  themeBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    setTheme(currentTheme() === "dark" ? "light" : "dark");
+  });
 }
 
 /** Switch the UI language if the model starts speaking a different language. */
