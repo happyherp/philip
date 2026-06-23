@@ -5,7 +5,15 @@
 
 /** Create an empty conversation. */
 export function createState() {
-  return { messages: /** @type {(Message | ReadNote)[]} */ ([]) };
+  return {
+    messages: /** @type {(Message | ReadNote)[]} */ ([]),
+    /** @type {string | null} Summary from a previous condensation round. */
+    condensedSummary: null,
+    /** @type {number} Index into messages — everything before this is captured in the summary. */
+    condensedUpToIndex: 0,
+    /** @type {number} Unix-ms timestamp of the last chat request (0 = never). */
+    lastRequestAt: 0,
+  };
 }
 
 /** Append a message and return the created message object. */
@@ -36,9 +44,15 @@ export function appendToken(state, token) {
   return last;
 }
 
-/** The history to send to the server: only the user/assistant turns. */
+/**
+ * The history to send to the server: only the user/assistant turns.
+ * If a condensed summary exists, returns only messages after the condensation
+ * point — the summary is sent separately.
+ */
 export function toHistory(state) {
+  const start = state.condensedSummary ? state.condensedUpToIndex : 0;
   return state.messages
+    .slice(start)
     .filter((m) => m.role === "user" || m.role === "assistant")
     .map((m) => ({ role: m.role, content: m.content }));
 }
