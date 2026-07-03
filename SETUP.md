@@ -48,11 +48,32 @@ Local secrets live in `.dev.vars` (gitignored):
 ```
 OPENROUTER_API_KEY=sk-or-...
 OPENROUTER_MODEL=anthropic/claude-sonnet-4   # optional; any tool-calling model on OpenRouter
+CONDENSE_MODEL=anthropic/claude-haiku-4.5    # optional; cheap model for conversation condensation
 MAX_MESSAGES_PER_CONVERSATION=200          # optional; per-conversation user-message cap
 MAX_MESSAGES_PER_IP_PER_DAY=300            # optional; per-IP daily request cap
 ```
 
-> The model **must support tool calling** (Philip uses a `get_passage` tool).
+> The chat model **must support tool calling** (Philip uses a `get_passage` tool).
+> The condense model does not need tool calling — it only summarizes conversation
+> history.
+
+## Conversation condensation
+
+When a conversation grows long **and** the Anthropic prompt cache has gone cold
+(default: 5 minutes since the last request), Philip automatically summarizes the
+older history using a cheap model. Subsequent turns send `[summary + recent
+messages]` instead of the full transcript, keeping token costs down without
+losing context.
+
+| Env var | Default | Purpose |
+| --- | --- | --- |
+| `CONDENSE_MODEL` | `anthropic/claude-haiku-4.5` | Cheap/fast model used for summarization |
+| `CONDENSE_TOKEN_THRESHOLD` | `8000` | Token estimate above which condensation may trigger |
+| `CONDENSE_CACHE_TTL_SECONDS` | `300` (5 min) | Condensation only fires when the prompt cache has gone cold |
+
+The condense model does not need tool-calling support — it performs a single
+non-streaming summarization call. Override it with any inexpensive model on
+OpenRouter.
 
 ## Abuse protection (usage caps)
 
@@ -203,6 +224,7 @@ npm run deploy                                   # wrangler pages deploy public
 npx wrangler pages secret put OPENROUTER_API_KEY # set the server secret
 # optional:
 npx wrangler pages secret put OPENROUTER_MODEL
+npx wrangler pages secret put CONDENSE_MODEL
 ```
 
 ### Continuous deployment (GitHub Actions)
@@ -252,7 +274,7 @@ Two things make previews fully functional, separate from production:
   conversations. Re-apply migrations to it with
   `npx wrangler d1 migrations apply philip-db-preview --remote --env preview`.
 - **Secret** — Pages secrets are per-environment and the CLI can't target preview, so
-  set `OPENROUTER_API_KEY` (and optionally `OPENROUTER_MODEL`) once in the dashboard:
+  set `OPENROUTER_API_KEY` (and optionally `OPENROUTER_MODEL`, `CONDENSE_MODEL`) once in the dashboard:
   **Workers & Pages → philip → Settings → Variables and Secrets → Preview**. Without
   it, the chat API returns 500 in previews (static pages still load).
 
@@ -267,3 +289,7 @@ someone is actually reading.
   reuse the same `src/` modules unchanged.
 - Scripture is fetched per-book at request time from the bundled JSON via the
   `get_passage` tool, so the model never invents verse text.
+- Two models work together: the **primary model** (default `claude-sonnet-4`)
+  handles all conversation and tool use; a **condensation model** (default
+  `claude-haiku-4.5`) cheaply summarizes long conversations when the prompt
+  cache has expired, keeping token costs manageable.
