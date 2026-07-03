@@ -80,6 +80,80 @@ describe("runChat tool loop", () => {
     expect(secondBody.messages[0].role).toBe("system");
   });
 
+  it("resolves multiple passages (different books and translations) in one tool call", async () => {
+    const toolTurn = sseResponse([
+      toolEvent(0, {
+        id: "c1",
+        name: "get_passage",
+        arguments:
+          '{"passages":[{"reference":"John 1:1","translation":"web"},' +
+          '{"reference":"John 1:1","translation":"tisch"},' +
+          '{"reference":"Genesis 1:1","translation":"web"}]}',
+      }),
+      DONE,
+    ]);
+    const answerTurn = sseResponse([contentEvent("Done."), DONE]);
+    const { fetchImpl, bodies } = fetchSequence([toolTurn, answerTurn]);
+
+    const usedTranslations: string[] = [];
+    const requests: Array<{ reference: string; translationId: string }> = [];
+    await runChat([{ role: "user", content: "Compare these" }], {
+      apiKey: "test",
+      model: "test/model",
+      fetchImpl,
+      assetFetch: fileAssetFetch(),
+      onToken: () => {},
+      onPassageRequest: (info) => {
+        requests.push(info);
+      },
+      onTranslationUsed: (tid) => {
+        usedTranslations.push(tid);
+      },
+    });
+
+    // One progress + translation event per passage, in order.
+    expect(requests).toEqual([
+      { reference: "John 1:1", translationId: "web" },
+      { reference: "John 1:1", translationId: "tisch" },
+      { reference: "Genesis 1:1", translationId: "web" },
+    ]);
+    expect(usedTranslations).toEqual(["web", "tisch", "web"]);
+
+    // A single tool message carries the text of all three passages.
+    const toolMsg = (await bodies())[1].messages.find((m: any) => m.role === "tool");
+    const toolContent = JSON.stringify(toolMsg.content);
+    expect(toolContent).toContain("In the beginning was the Word"); // John 1:1 WEB
+    expect(toolContent).toContain("λόγος"); // John 1:1 Tischendorf (Greek)
+    expect(toolContent).toContain("In the beginning, God created"); // Genesis 1:1 WEB
+  });
+
+  it("reports one failed passage without dropping the rest of a batch", async () => {
+    const toolTurn = sseResponse([
+      toolEvent(0, {
+        id: "c1",
+        name: "get_passage",
+        arguments: '{"passages":[{"reference":"John 1:1"},{"reference":"bogus"}]}',
+      }),
+      DONE,
+    ]);
+    const answerTurn = sseResponse([contentEvent("Done."), DONE]);
+    const { fetchImpl, bodies } = fetchSequence([toolTurn, answerTurn]);
+
+    await runChat([{ role: "user", content: "batch" }], {
+      apiKey: "test",
+      model: "test/model",
+      fetchImpl,
+      assetFetch: fileAssetFetch(),
+      onToken: () => {},
+    });
+
+    const toolMsg = (await bodies())[1].messages.find((m: any) => m.role === "tool");
+    const toolContent = JSON.stringify(toolMsg.content);
+    expect(toolContent).toContain("In the beginning was the Word");
+    expect(toolContent).toContain("error");
+    expect(toolContent).toContain("bogus");
+  });
+
   it("reports the passage being read (canonical reference + translation) before fetching", async () => {
     const toolTurn = sseResponse([
       toolEvent(0, { id: "c1", name: "get_passage", arguments: '{"reference":"john 3"}' }),

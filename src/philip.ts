@@ -13,34 +13,55 @@ const TRANSLATION_LINES = TRANSLATIONS.map((t) => {
   return `"${t.id}" = ${t.fullName}${part}`;
 }).join("; ");
 
+const PASSAGE_ITEM = {
+  type: "object" as const,
+  properties: {
+    reference: {
+      type: "string",
+      description:
+        'A passage reference such as "John 8:31-32", "Psalm 23", "1 John 1:9", ' +
+        'or a cross-chapter range like "John 8:31-9:2". Ask only for the verses ' +
+        "you mean to read — the tool automatically returns the surrounding verses " +
+        "(the ten before and five after) as context, so you never need to widen the " +
+        "range just to see what comes around it.",
+    },
+    translation: {
+      type: "string",
+      enum: TRANSLATIONS.map((t) => t.id),
+      description:
+        `Which Bible text to use: ${TRANSLATION_LINES}. ` +
+        "For reading, choose the translation that matches the language you are speaking to the reader in. " +
+        "Use tisch/wlc/lxx/vul only for original-language study (word studies, comparing renderings). " +
+        "Defaults to the reader's initial language if omitted.",
+    },
+  },
+  required: ["reference"],
+};
+
 export const GET_PASSAGE_TOOL = {
   type: "function" as const,
   function: {
     name: "get_passage",
     description:
-      "Fetch the exact Bible text for a passage. ALWAYS call " +
-      "this before quoting any scripture. Never write verse text from memory.",
+      "Fetch the exact Bible text for one or more passages. ALWAYS call this " +
+      "before quoting any scripture. Never write verse text from memory. Each " +
+      "passage comes back with the surrounding verses (ten before, five after) as " +
+      "context. You may request several passages at once — across different books " +
+      "and translations — by listing them in `passages` (e.g. a Greek and an " +
+      "English rendering of the same verse for a word study).",
     parameters: {
       type: "object",
       properties: {
-        reference: {
-          type: "string",
+        passages: {
+          type: "array",
+          minItems: 1,
+          items: PASSAGE_ITEM,
           description:
-            'A passage reference such as "John 8:31-32", "Psalm 23", "1 John 1:9", ' +
-            'or a cross-chapter range like "John 8:31-9:2". Keep it to a few verses ' +
-            "at a time for reading; request more only when genuinely needed.",
-        },
-        translation: {
-          type: "string",
-          enum: TRANSLATIONS.map((t) => t.id),
-          description:
-            `Which Bible text to use: ${TRANSLATION_LINES}. ` +
-            "For reading, choose the translation that matches the language you are speaking to the reader in. " +
-            "Use tisch/wlc/lxx/vul only for original-language study (word studies, comparing renderings). " +
-            "Defaults to the reader's initial language if omitted.",
+            "The passages to fetch, resolved in order. Usually one entry; use several " +
+            "when you genuinely need them together in the same turn.",
         },
       },
-      required: ["reference"],
+      required: ["passages"],
     },
   },
 };
@@ -54,6 +75,8 @@ You have one tool: get_passage. You may not write any verse text, or any orienta
 You never type out verse text yourself — you display scripture with a quote marker (see "Quoting scripture"), and the system renders the exact text. The marker only tells the system what to display: you must still call get_passage and read the verses before writing about them.
 
 Per reading turn, in order: decide the next passage → call get_passage → read the result → place the quote marker → write the orientation → invite the next step. If get_passage returns an error, retry with a corrected reference — never fall back to memory.
+
+Every result also carries the surrounding verses (the ten before and five after), clearly labelled as context. Read them to understand the flow, but keep your reading focused on the passage you asked for — the context is for you, not a licence to sprawl. Those context verses are exact fetched text too, so you may quote from them like any other; you do not need a second call to reach a nearby verse the context already contains. When you genuinely need passages together in one turn — a Greek and English line side by side for a word study, or a cross-reference you will point to — request them all in a single get_passage call by listing several entries in \`passages\`, rather than making separate calls.
 
 # Language and translation
 
