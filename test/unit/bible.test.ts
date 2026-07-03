@@ -91,6 +91,39 @@ describe("getPassage (against bundled WEB)", () => {
     expect(p.verses[1].text).toContain("the truth will make you free");
   });
 
+  it("includes up to 10 verses before and 5 after as context", async () => {
+    const p = await getPassage("John 8:31-32", assets);
+    if (!("verses" in p)) throw new Error("expected verses");
+    // 8:21-8:30 precede the requested range within the same chapter.
+    expect(p.contextBefore).toHaveLength(10);
+    expect(p.contextBefore[0]).toMatchObject({ chapter: 8, verse: 21 });
+    expect(p.contextBefore[9]).toMatchObject({ chapter: 8, verse: 30 });
+    // 8:33-8:37 follow it.
+    expect(p.contextAfter).toHaveLength(5);
+    expect(p.contextAfter[0]).toMatchObject({ chapter: 8, verse: 33 });
+    expect(p.contextAfter[4]).toMatchObject({ chapter: 8, verse: 37 });
+    // The requested verses themselves are unchanged.
+    expect(p.verses).toHaveLength(2);
+  });
+
+  it("draws context across chapter boundaries within the book", async () => {
+    // John 8:2 has only one verse before it in the chapter (8:1), so the
+    // remaining context must come from the end of John 7.
+    const p = await getPassage("John 8:2", assets);
+    if (!("verses" in p)) throw new Error("expected verses");
+    expect(p.contextBefore).toHaveLength(10);
+    expect(p.contextBefore.some((v) => v.chapter === 7)).toBe(true);
+    expect(p.contextBefore[p.contextBefore.length - 1]).toMatchObject({ chapter: 8, verse: 1 });
+  });
+
+  it("clamps context at the start of a book (nothing before Genesis 1:1)", async () => {
+    const p = await getPassage("Genesis 1:1", assets);
+    if (!("verses" in p)) throw new Error("expected verses");
+    expect(p.contextBefore).toHaveLength(0);
+    expect(p.contextAfter).toHaveLength(5);
+    expect(p.contextAfter[0]).toMatchObject({ chapter: 1, verse: 2 });
+  });
+
   it("returns a whole chapter", async () => {
     const p = await getPassage("Psalm 23", assets);
     if (!("verses" in p)) throw new Error("expected verses");
@@ -143,7 +176,12 @@ describe("getPassage (against bundled WEB)", () => {
   it("renders passage text for the model", async () => {
     const p = await getPassage("John 8:32", assets);
     if (!("verses" in p)) throw new Error("expected verses");
-    expect(passageToText(p)).toContain("John 8:32 (WEB)");
-    expect(passageToText(p)).toContain("8:32 You will know the truth");
+    const text = passageToText(p);
+    expect(text).toContain("John 8:32 (WEB)");
+    expect(text).toContain("8:32 You will know the truth");
+    // Context is labeled so the model can tell it apart from the request.
+    expect(text).toContain("Context before");
+    expect(text).toContain("Context after");
+    expect(text).toContain("Passage (John 8:32):");
   });
 });

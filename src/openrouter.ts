@@ -2,7 +2,14 @@
 // Everything external (the HTTP fetch and the asset/passage lookup) is injected,
 // so the whole loop is unit-testable with canned SSE streams and no network.
 
-import { type AssetFetch, formatReference, getPassage, parseReference, passageToText } from "./bible.ts";
+import {
+  type AssetFetch,
+  type PassageRequest,
+  formatReference,
+  getPassage,
+  parseReference,
+  passageToText,
+} from "./bible.ts";
 import { GET_PASSAGE_TOOL, SYSTEM_PROMPT } from "./philip.ts";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -164,12 +171,13 @@ export async function runChat(history: ChatMessage[], deps: RunChatDeps): Promis
       messages.push({ role: "assistant", content: turn.content || null, tool_calls: turn.toolCalls });
       for (const call of turn.toolCalls) {
         if (deps.onPassageRequest) {
-          const info = describePassageCall(call, deps.translationId ?? "web");
-          if (info) await deps.onPassageRequest(info);
+          for (const info of describePassageCalls(call, deps.translationId ?? "web")) {
+            await deps.onPassageRequest(info);
+          }
         }
-        const { text, translationUsed } = await executeToolCall(call, deps.assetFetch, deps.translationId ?? "web");
-        if (translationUsed && deps.onTranslationUsed) {
-          await deps.onTranslationUsed(translationUsed);
+        const { text, translationsUsed } = await executeToolCall(call, deps.assetFetch, deps.translationId ?? "web");
+        if (deps.onTranslationUsed) {
+          for (const translationId of translationsUsed) await deps.onTranslationUsed(translationId);
         }
         messages.push({
           role: "tool",
@@ -189,32 +197,60 @@ export async function runChat(history: ChatMessage[], deps: RunChatDeps): Promis
 }
 
 /**
- * Inspect a streamed tool call and, if it's a parseable get_passage request,
- * return a canonical reference + translation id for a progress message. Returns
- * null for anything we can't describe yet (the model will get an error result
- * and self-correct, so there's nothing useful to show).
+ * Normalize a get_passage tool call's arguments into a list of passage
+ * requests. Accepts the batched shape `{ passages: [{reference, translation}] }`
+ * and the single-passage shape `{ reference, translation }` (back-compat).
+ * Returns null when the JSON can't be parsed at all.
  */
-function describePassageCall(
-  call: ToolCall,
-  defaultTranslationId: string,
-): { reference: string; translationId: string } | null {
-  if (call.function.name !== "get_passage") return null;
-  let args: { reference?: string; translation?: string };
+function parsePassageRequests(argumentsJson: string): PassageRequest[] | null {
+  let args: {
+    passages?: Array<{ reference?: unknown; translation?: unknown }>;
+    reference?: unknown;
+    translation?: unknown;
+  };
   try {
-    args = JSON.parse(call.function.arguments || "{}");
+    args = JSON.parse(argumentsJson || "{}");
   } catch {
     return null;
   }
-  if (!args.reference) return null;
-  const parsed = parseReference(args.reference);
-  const reference = parsed ? formatReference(parsed) : args.reference;
-  return { reference, translationId: args.translation || defaultTranslationId };
+  const raw = Array.isArray(args.passages) ? args.passages : [args];
+  const requests: PassageRequest[] = [];
+  for (const p of raw) {
+    if (!p || typeof p.reference !== "string") continue;
+    requests.push({
+      reference: p.reference,
+      translation: typeof p.translation === "string" ? p.translation : undefined,
+    });
+  }
+  return requests;
+}
+
+/**
+ * Inspect a streamed tool call and, for each parseable passage in it, return a
+ * canonical reference + translation id for a progress message. Returns an empty
+ * list for anything we can't describe yet (the model will get an error result
+ * and self-correct, so there's nothing useful to show).
+ */
+function describePassageCalls(
+  call: ToolCall,
+  defaultTranslationId: string,
+): Array<{ reference: string; translationId: string }> {
+  if (call.function.name !== "get_passage") return [];
+  const requests = parsePassageRequests(call.function.arguments);
+  if (!requests) return [];
+  return requests.map((req) => {
+    const parsed = parseReference(req.reference);
+    return {
+      reference: parsed ? formatReference(parsed) : req.reference,
+      translationId: req.translation || defaultTranslationId,
+    };
+  });
 }
 
 interface ToolCallResult {
   text: string;
-  /** The translation id that was actually used (model-chosen or fallback). */
-  translationUsed?: string;
+  /** The translation ids that were actually used, one per resolved passage. */
+  translationsUsed: string[];
 }
 
 async function executeToolCall(
@@ -223,25 +259,34 @@ async function executeToolCall(
   defaultTranslationId = "web",
 ): Promise<ToolCallResult> {
   if (call.function.name !== "get_passage") {
-    return { text: JSON.stringify({ error: `Unknown tool: ${call.function.name}` }) };
+    return { text: JSON.stringify({ error: `Unknown tool: ${call.function.name}` }), translationsUsed: [] };
   }
-  let reference = "";
-  let translationId = defaultTranslationId;
-  try {
-    const args = JSON.parse(call.function.arguments || "{}") as {
-      reference?: string;
-      translation?: string;
+  const requests = parsePassageRequests(call.function.arguments);
+  if (!requests) {
+    return { text: JSON.stringify({ error: "Invalid tool arguments JSON." }), translationsUsed: [] };
+  }
+  if (requests.length === 0) {
+    return {
+      text: JSON.stringify({ error: "No passages requested. Provide at least one reference." }),
+      translationsUsed: [],
     };
-    reference = args.reference ?? "";
-    if (args.translation) translationId = args.translation;
-  } catch {
-    return { text: JSON.stringify({ error: "Invalid tool arguments JSON." }) };
   }
-  const result = await getPassage(reference, assetFetch, translationId);
-  return {
-    text: "error" in result ? JSON.stringify(result) : passageToText(result),
-    translationUsed: translationId,
-  };
+
+  const blocks: string[] = [];
+  const translationsUsed: string[] = [];
+  for (const req of requests) {
+    const translationId = req.translation || defaultTranslationId;
+    const result = await getPassage(req.reference, assetFetch, translationId);
+    if ("error" in result) {
+      // Keep the reference alongside the error so the model knows which of a
+      // batch of requests failed.
+      blocks.push(JSON.stringify({ reference: req.reference, ...result }));
+    } else {
+      blocks.push(passageToText(result));
+      translationsUsed.push(translationId);
+    }
+  }
+  return { text: blocks.join("\n\n———\n\n"), translationsUsed };
 }
 
 interface StreamTurn {

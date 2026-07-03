@@ -11,6 +11,10 @@ const BOOK_INDEX = buildBookIndex();
 /** Max verses a single lookup may return (longest chapter, Ps 119, is 176). */
 export const MAX_VERSES = 200;
 
+/** How many surrounding verses to include automatically for context. */
+export const CONTEXT_BEFORE = 10;
+export const CONTEXT_AFTER = 5;
+
 export interface ParsedReference {
   book: BookMeta;
   startChapter: number;
@@ -31,11 +35,22 @@ export interface Passage {
   /** Normalized canonical reference, e.g. "John 8:31-32". */
   reference: string;
   translation: string;
+  /** The exact verses the reference asked for. */
   verses: PassageVerse[];
+  /** Up to {@link CONTEXT_BEFORE} verses immediately preceding `verses` (same book). */
+  contextBefore: PassageVerse[];
+  /** Up to {@link CONTEXT_AFTER} verses immediately following `verses` (same book). */
+  contextAfter: PassageVerse[];
 }
 
 export interface PassageError {
   error: string;
+}
+
+/** A single passage request (reference + optional translation) in a batch. */
+export interface PassageRequest {
+  reference: string;
+  translation?: string;
 }
 
 /** Reads `/bible/web/<file>.json` and returns the Response (or 404). */
@@ -147,38 +162,78 @@ export async function getPassage(
   }
   const data = (await res.json()) as CompactBook;
 
-  const verses: PassageVerse[] = [];
-  for (let c = ref.startChapter; c <= ref.endChapter; c++) {
+  // Flatten the whole book into canonical verse order once, so the requested
+  // range and the surrounding context can both be sliced from a single array.
+  const allVerses: PassageVerse[] = [];
+  const chapterNums = Object.keys(data.chapters)
+    .map(Number)
+    .sort((a, b) => a - b);
+  for (const c of chapterNums) {
     const chapter = data.chapters[String(c)];
-    if (!chapter) continue;
     const verseNums = Object.keys(chapter)
       .map(Number)
       .sort((a, b) => a - b);
-
-    const lo = c === ref.startChapter && ref.startVerse != null ? ref.startVerse : -Infinity;
-    const hi = c === ref.endChapter && ref.endVerse != null ? ref.endVerse : Infinity;
-
-    for (const v of verseNums) {
-      if (v >= lo && v <= hi) verses.push({ chapter: c, verse: v, text: chapter[String(v)] });
-      if (verses.length > MAX_VERSES) break;
-    }
-    if (verses.length > MAX_VERSES) break;
+    for (const v of verseNums) allVerses.push({ chapter: c, verse: v, text: chapter[String(v)] });
   }
 
-  if (verses.length === 0) {
+  const inRange = (v: PassageVerse): boolean => {
+    if (v.chapter < ref.startChapter || v.chapter > ref.endChapter) return false;
+    if (v.chapter === ref.startChapter && ref.startVerse != null && v.verse < ref.startVerse) return false;
+    if (v.chapter === ref.endChapter && ref.endVerse != null && v.verse > ref.endVerse) return false;
+    return true;
+  };
+
+  const firstIdx = allVerses.findIndex(inRange);
+  if (firstIdx === -1) {
     return { error: `No verses found for "${formatReference(ref)}" in ${ref.book.name}.` };
   }
+  let lastIdx = firstIdx;
+  for (let i = firstIdx; i < allVerses.length && inRange(allVerses[i]); i++) lastIdx = i;
+
+  const verses = allVerses.slice(firstIdx, lastIdx + 1);
   if (verses.length > MAX_VERSES) {
     return {
       error: `That range is too large (over ${MAX_VERSES} verses). Request a smaller passage.`,
     };
   }
 
-  return { reference: formatReference(ref), translation: data.translation, verses };
+  const contextBefore = allVerses.slice(Math.max(0, firstIdx - CONTEXT_BEFORE), firstIdx);
+  const contextAfter = allVerses.slice(lastIdx + 1, lastIdx + 1 + CONTEXT_AFTER);
+
+  return {
+    reference: formatReference(ref),
+    translation: data.translation,
+    verses,
+    contextBefore,
+    contextAfter,
+  };
 }
 
 /** Render a passage as plain text for inclusion in a tool result. */
 export function passageToText(passage: Passage): string {
-  const body = passage.verses.map((v) => `${v.chapter}:${v.verse} ${v.text}`).join("\n");
-  return `${passage.reference} (${passage.translation})\n${body}`;
+  const line = (v: PassageVerse) => `${v.chapter}:${v.verse} ${v.text}`;
+  const span = (vs: PassageVerse[]) =>
+    vs.length === 1
+      ? `${vs[0].chapter}:${vs[0].verse}`
+      : `${vs[0].chapter}:${vs[0].verse}-${vs[vs.length - 1].chapter}:${vs[vs.length - 1].verse}`;
+
+  const sections: string[] = [`${passage.reference} (${passage.translation})`];
+  const hasContext = passage.contextBefore.length > 0 || passage.contextAfter.length > 0;
+
+  if (passage.contextBefore.length > 0) {
+    sections.push(
+      `Context before (${span(passage.contextBefore)}):\n${passage.contextBefore.map(line).join("\n")}`,
+    );
+  }
+  // Label the requested verses only when context surrounds them, so the model
+  // can tell exactly what it asked for from the extra material.
+  const body = passage.verses.map(line).join("\n");
+  sections.push(hasContext ? `Passage (${passage.reference}):\n${body}` : body);
+  if (passage.contextAfter.length > 0) {
+    sections.push(
+      `Context after (${span(passage.contextAfter)}):\n${passage.contextAfter.map(line).join("\n")}`,
+    );
+  }
+
+  return sections.join("\n\n");
 }
