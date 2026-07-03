@@ -29,6 +29,8 @@ export const I18N = {
     saving: "saving…",
     reading: "Reading {reference} in {translation}",
     read: "Read {reference} in {translation}",
+    theme_to_dark: "Switch to dark mode",
+    theme_to_light: "Switch to light mode",
   },
   es: {
     title: "Felipe — leer la Biblia juntos",
@@ -57,6 +59,8 @@ export const I18N = {
     saving: "guardando…",
     reading: "Leyendo {reference} en {translation}",
     read: "Leído {reference} en {translation}",
+    theme_to_dark: "Cambiar a modo oscuro",
+    theme_to_light: "Cambiar a modo claro",
   },
   de: {
     title: "Philipp — die Bibel gemeinsam lesen",
@@ -85,6 +89,8 @@ export const I18N = {
     saving: "speichern…",
     reading: "Lese {reference} in {translation}",
     read: "{reference} in {translation} gelesen",
+    theme_to_dark: "Zum dunklen Modus wechseln",
+    theme_to_light: "Zum hellen Modus wechseln",
   },
 };
 
