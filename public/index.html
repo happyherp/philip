@@ -48,6 +48,7 @@
       <a href="#" id="toggle-conversations" class="chip" aria-expanded="false" aria-controls="conversations" title="Saved conversations" hidden>saved</a>
       <a href="#" id="share-chat" class="chip disabled" aria-disabled="true" title="Copy a link to this conversation">share</a>
       <a href="#" id="new-chat" class="chip" title="Start a fresh conversation">new</a>
+      <a href="#" id="about-link" class="chip" title="About Philip" aria-haspopup="dialog" aria-expanded="false">about</a>
       <a href="#" id="theme-toggle" class="chip chip-theme" title="Switch theme" role="button">☾</a>
       <p class="tagline">“Do you understand what you are reading?” — Acts 8:30</p>
 
@@ -84,6 +85,14 @@
         <button id="send" type="submit">Send</button>
       </div>
     </form>
+
+    <!-- About overlay: what Philip is, its features, languages and Bible
+         translations. Content is built and translated by frontend/about.js. -->
+    <div id="about" class="about-overlay" role="dialog" aria-modal="true" aria-labelledby="about-title" hidden>
+      <div class="about-panel">
+        <div class="about-content"></div>
+      </div>
+    </div>
 
     <script type="module" src="./app.js"></script>
   </body>

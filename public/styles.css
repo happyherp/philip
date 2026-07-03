@@ -192,6 +192,135 @@ body {
   background: var(--user);
 }
 
+/* About: a centered overlay dialog opened from the "about" chip. The backdrop
+   dims the chat; the panel scrolls internally on small screens. */
+.about-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.45);
+}
+/* The author display:flex above would otherwise override the UA [hidden] rule,
+   leaving the overlay laid out (and intercepting clicks) while "hidden". */
+.about-overlay[hidden] { display: none; }
+.about-panel {
+  width: 100%;
+  max-width: 40rem;
+  max-height: min(85vh, 44rem);
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 12px 40px var(--shadow);
+}
+.about-content {
+  padding: 22px 26px 28px;
+  text-align: left;
+}
+.about-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.about-title {
+  margin: 0;
+  font-size: 1.4rem;
+  color: var(--accent);
+  letter-spacing: 0.01em;
+}
+.about-close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 1.6rem;
+  line-height: 1;
+  color: var(--muted);
+  padding: 0 4px;
+}
+.about-close:hover { color: var(--accent); }
+.about-intro {
+  margin: 0.4em 0 0.8em;
+  color: var(--ink);
+}
+.about-section-title {
+  margin: 1.4em 0 0.5em;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+.about-note {
+  margin: 0 0 0.7em;
+  font-size: 0.86rem;
+  font-style: italic;
+  color: var(--muted);
+}
+.about-subhead {
+  margin: 1em 0 0.4em;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+.about-features,
+.about-langs {
+  margin: 0;
+  padding-left: 1.2em;
+}
+.about-features li,
+.about-langs li { margin: 0.3em 0; }
+.about-translations {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.about-translations li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+.about-translations li:last-child { border-bottom: none; }
+.about-translation-name {
+  font-weight: 600;
+  color: var(--accent);
+}
+.about-translation-full {
+  flex: 1;
+  min-width: 8rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.about-badge {
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  white-space: nowrap;
+}
+.about-github {
+  display: inline-block;
+  margin-top: 0.3em;
+  color: var(--accent);
+}
+
 .log {
   flex: 1;
   overflow-y: auto;
