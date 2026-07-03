@@ -89,32 +89,6 @@ credits, so it is bounded by **D1-backed usage caps**:
 Exceeding either returns HTTP 429 with a friendly message. The counters live in
 the `ip_daily_usage` table (`migrations/0002_ip_daily_usage.sql`).
 
-### Setup (one-time)
-
-Apply the rate-limit migration to both remote databases:
-
-```bash
-npx wrangler d1 migrations apply philip-db --remote
-npx wrangler d1 migrations apply philip-db-preview --remote --env preview
-```
-
-### Testing the 429 path on a preview deployment
-
-To see the cap without sending hundreds of messages, temporarily set
-`MAX_MESSAGES_PER_IP_PER_DAY=3` as a **Preview** environment variable and
-redeploy.
-
-## Regenerate bundled assets (optional)
-
-These are committed, so you normally don't need to run them. To refresh:
-
-```bash
-npm run build:bible            # downloads WEB and writes public/bible/web/*.json
-npm run build:bible:extra      # RV1909 (Spanish) + Luther 1545 (German)
-npm run build:bible:originals  # Tischendorf Greek NT, WLC Hebrew, LXX, Vulgate
-npm run gen:frontend           # regenerates public/frontend/bible-data.gen.js
-npm run vendor:marked          # pins the markdown renderer into public/frontend/vendor
-```
 
 ## Run locally
 
@@ -280,6 +254,18 @@ Two things make previews fully functional, separate from production:
 
 Cloudflare Pages scales to zero — you only pay (nothing, on the free tier) when
 someone is actually reading.
+
+## Regenerate bundled assets (optional)
+
+These are committed, so you normally don't need to run them. To refresh:
+
+```bash
+npm run build:bible            # downloads WEB and writes public/bible/web/*.json
+npm run build:bible:extra      # RV1909 (Spanish) + Luther 1545 (German)
+npm run build:bible:originals  # Tischendorf Greek NT, WLC Hebrew, LXX, Vulgate
+npm run gen:frontend           # regenerates public/frontend/bible-data.gen.js
+npm run vendor:marked          # pins the markdown renderer into public/frontend/vendor
+```
 
 ## Architecture notes
 
