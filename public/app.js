@@ -117,10 +117,13 @@ const CONVERSATIONS_KEY = "philip:conversations";
 
 function saveConversation() {
   try {
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ messages: state.messages, lang }),
-    );
+    const data = { messages: state.messages, lang };
+    if (state.condensedSummary) {
+      data.condensedSummary = state.condensedSummary;
+      data.condensedUpToIndex = state.condensedUpToIndex;
+    }
+    if (state.lastRequestAt) data.lastRequestAt = state.lastRequestAt;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   } catch (e) {
     console.warn("[philip] could not save conversation", e);
   }
@@ -239,6 +242,13 @@ function restoreConversation() {
   }
   if (typeof stored.lang === "string") switchLang(stored.lang);
   renderMessages(stored.messages);
+  if (typeof stored.condensedSummary === "string") {
+    state.condensedSummary = stored.condensedSummary;
+    state.condensedUpToIndex = stored.condensedUpToIndex ?? 0;
+  }
+  if (typeof stored.lastRequestAt === "number") {
+    state.lastRequestAt = stored.lastRequestAt;
+  }
 }
 
 /**
@@ -341,6 +351,8 @@ async function send(text) {
   await streamChat({
     messages: outgoing,
     lang,
+    lastRequestAt: state.lastRequestAt || undefined,
+    condensedSummary: state.condensedSummary || undefined,
     onLang: (newLang) => switchLang(newLang),
     onToken: (token) => {
       finalizeRead();
@@ -361,10 +373,26 @@ async function send(text) {
       // The read line now carries the activity indicator instead of the bubble.
       bubble.classList.remove("thinking");
     },
+    onCondensed: ({ summary, upToIndex }) => {
+      state.condensedSummary = summary;
+      // upToIndex is relative to what was sent (outgoing), but the messages
+      // array may include "read" notes. Map it to the full state.messages index
+      // by counting only user/assistant messages.
+      let count = 0;
+      let fullIndex = 0;
+      for (let i = 0; i < state.messages.length; i++) {
+        const m = state.messages[i];
+        if (m.role === "user" || m.role === "assistant") count++;
+        if (count >= upToIndex) { fullIndex = i + 1; break; }
+      }
+      state.condensedUpToIndex = fullIndex;
+    },
     onError: (message, info) => {
       failure = { message, code: info?.code };
     },
   });
+
+  state.lastRequestAt = Date.now();
 
   // The stream is done: settle any in-flight read, drop any pending frame and
   // render the final content once, then release the reserved space.
@@ -472,6 +500,9 @@ async function archiveActive() {
 function resetActive() {
   clearStoredConversation();
   renderMessages([]);
+  state.condensedSummary = null;
+  state.condensedUpToIndex = 0;
+  state.lastRequestAt = 0;
   input.focus();
 }
 

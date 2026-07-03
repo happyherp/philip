@@ -3,6 +3,8 @@
 // Pages Function (and, later, a WhatsApp webhook) are thin wrappers over this.
 
 import { type AssetFetch } from "./bible.ts";
+import { condenseHistory, estimateTokens, shouldCondense } from "./condense.ts";
+import type { ConversationMessage } from "./messages.ts";
 import { runChat } from "./openrouter.ts";
 import { buildSystemPrompt } from "./philip.ts";
 import { translationById, translationForLang } from "./translations.ts";
@@ -23,6 +25,16 @@ export interface StreamChatOptions {
   title?: string;
   /** ISO 639-1 language code for the reader (e.g. "en", "es", "de"). Selects system prompt and Bible translation. */
   lang?: string;
+  /** Cheap model for condensation (e.g. "anthropic/claude-haiku-4.5"). If unset, condensation is disabled. */
+  condenseModel?: string;
+  /** Token-count threshold above which condensation may trigger (default 8000). */
+  condenseThreshold?: number;
+  /** Cache TTL in ms — condensation only fires when the cache has gone cold (default 300 000 = 5 min). */
+  condenseCacheTtlMs?: number;
+  /** Unix-ms timestamp of the browser's last chat request (used to check cache staleness). */
+  lastRequestAt?: number;
+  /** Existing condensed summary from a previous condensation round (sent by the client). */
+  condensedSummary?: string;
 }
 
 /** Result of {@link streamChatResponse}: the SSE response plus its pump promise. */
@@ -51,7 +63,62 @@ export function streamChatResponse(opts: StreamChatOptions): StreamChatResult {
         await send({ error: "No message provided." });
         return;
       }
-      await runChat(history, {
+
+      // --- Condensation: summarise old history when it's long AND the cache is cold ---
+      let llmHistory: ConversationMessage[] = history;
+      const condenseModel = opts.condenseModel;
+      const condenseThreshold = opts.condenseThreshold ?? 8000;
+      const condenseCacheTtlMs = opts.condenseCacheTtlMs ?? 300_000;
+      const lastRequestAt = opts.lastRequestAt ?? 0;
+
+      // Build the effective history the LLM will see. If the client already has
+      // a condensed summary from a previous round, prepend it.
+      let effectiveHistory: ConversationMessage[];
+      if (opts.condensedSummary) {
+        effectiveHistory = [
+          { role: "user", content: `[Conversation summary]\n${opts.condensedSummary}` },
+          { role: "assistant", content: "Understood, I have the context. Let's continue." },
+          ...history,
+        ];
+      } else {
+        effectiveHistory = history;
+      }
+
+      if (
+        condenseModel &&
+        shouldCondense(estimateTokens(effectiveHistory), lastRequestAt, condenseThreshold, condenseCacheTtlMs)
+      ) {
+        try {
+          // Condense the entire effective history (summary-so-far + recent).
+          const { summary } = await condenseHistory(effectiveHistory, {
+            apiKey: opts.apiKey,
+            model: condenseModel,
+            fetchImpl: opts.fetchImpl,
+            referer: opts.referer,
+            lang,
+          });
+          // Tell the client to store the new summary. upToIndex covers all
+          // messages the client sent this turn (everything in `history`).
+          await send({ condensed: { summary, upToIndex: history.length } });
+          // Replace the full history with the condensed version for the LLM.
+          effectiveHistory = [
+            { role: "user", content: `[Conversation summary]\n${summary}` },
+            { role: "assistant", content: "Understood, I have the context. Let's continue." },
+            ...history.slice(-2), // keep the most recent exchange for immediate continuity
+          ];
+          console.log("[philip] condensed conversation", {
+            originalTokens: estimateTokens(history),
+            condensedTokens: estimateTokens(effectiveHistory),
+          });
+        } catch (err) {
+          // Fail open — if condensation fails, just use the full history.
+          console.error("[philip] condensation failed, using full history", err);
+        }
+      }
+
+      llmHistory = effectiveHistory;
+
+      await runChat(llmHistory, {
         apiKey: opts.apiKey,
         model: opts.model,
         assetFetch: opts.assetFetch,

@@ -11,8 +11,11 @@
  * @param {(token: string) => void} opts.onToken
  * @param {(status: {type: string, reference?: string, translation?: string}) => void} [opts.onStatus] - progress updates (e.g. a passage being read)
  * @param {(lang: string) => void} [opts.onLang] - called when the model chooses a language/translation
+ * @param {(condensed: {summary: string, upToIndex: number}) => void} [opts.onCondensed] - called when the server condenses the conversation
  * @param {() => void} [opts.onDone]
  * @param {(message: string, info?: {status?: number, code?: string}) => void} [opts.onError]
+ * @param {number} [opts.lastRequestAt] - unix-ms timestamp of the previous chat request
+ * @param {string} [opts.condensedSummary] - existing condensed summary from a prior round
  * @param {typeof fetch} [opts.fetchImpl]
  * @param {string} [opts.url]
  */
@@ -22,12 +25,17 @@ export async function streamChat({
   onToken,
   onStatus,
   onLang,
+  onCondensed,
   onDone,
   onError,
+  lastRequestAt,
+  condensedSummary,
   fetchImpl = fetch,
   url = "/api/chat",
 }) {
   const body = { messages, lang };
+  if (lastRequestAt) body.lastRequestAt = lastRequestAt;
+  if (condensedSummary) body.condensedSummary = condensedSummary;
 
   let res;
   try {
@@ -87,6 +95,7 @@ export async function streamChat({
       if (typeof evt.token === "string") onToken(evt.token);
       else if (evt.status && typeof evt.status === "object") onStatus?.(evt.status);
       else if (typeof evt.lang === "string") onLang?.(evt.lang);
+      else if (evt.condensed && typeof evt.condensed === "object") onCondensed?.(evt.condensed);
       else if (evt.error) {
         finished = true;
         onError?.(evt.error);

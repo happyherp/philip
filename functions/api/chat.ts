@@ -20,9 +20,13 @@ interface Env {
   OPENROUTER_MODEL?: string;
   MAX_MESSAGES_PER_CONVERSATION?: string;
   MAX_MESSAGES_PER_IP_PER_DAY?: string;
+  CONDENSE_MODEL?: string;
+  CONDENSE_TOKEN_THRESHOLD?: string;
+  CONDENSE_CACHE_TTL_SECONDS?: string;
 }
 
 const DEFAULT_MODEL = "anthropic/claude-sonnet-4";
+const DEFAULT_CONDENSE_MODEL = "anthropic/claude-haiku-4.5";
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
   const { request, env } = context;
@@ -94,6 +98,19 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     `[philip] chat request – model=${model} turns=${history.length} lang=${lang}`,
   );
 
+  // --- Condensation config ---
+  const condenseModel = env.CONDENSE_MODEL || DEFAULT_CONDENSE_MODEL;
+  const condenseThreshold = parsePositiveInt(env.CONDENSE_TOKEN_THRESHOLD) ?? 8000;
+  const condenseCacheTtlSeconds = parsePositiveInt(env.CONDENSE_CACHE_TTL_SECONDS) ?? 300;
+  const lastRequestAt =
+    typeof body.lastRequestAt === "number" && body.lastRequestAt > 0
+      ? body.lastRequestAt
+      : undefined;
+  const condensedSummary =
+    typeof body.condensedSummary === "string" && body.condensedSummary.length > 0
+      ? body.condensedSummary
+      : undefined;
+
   const { response, pump } = streamChatResponse({
     history,
     apiKey: env.OPENROUTER_API_KEY,
@@ -102,6 +119,11 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     referer: new URL(request.url).origin,
     title: "Philip",
     lang,
+    condenseModel,
+    condenseThreshold,
+    condenseCacheTtlMs: condenseCacheTtlSeconds * 1000,
+    lastRequestAt,
+    condensedSummary,
   });
 
   context.waitUntil(
