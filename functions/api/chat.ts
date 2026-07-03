@@ -26,7 +26,7 @@ interface Env {
 }
 
 const DEFAULT_MODEL = "anthropic/claude-sonnet-4";
-const DEFAULT_CONDENSE_MODEL = "anthropic/claude-haiku-4";
+const DEFAULT_CONDENSE_MODEL = "anthropic/claude-haiku-4.5";
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
   const { request, env } = context;
