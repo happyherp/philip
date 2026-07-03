@@ -4,8 +4,8 @@ pages_build_output_dir = "public"
 
 # Secrets (set locally in .dev.vars, in prod via `wrangler pages secret put`):
 #   OPENROUTER_API_KEY   required
-#   OPENROUTER_MODEL     optional (defaults to anthropic/claude-sonnet-4)
-#   CONDENSE_MODEL       optional (defaults to anthropic/claude-haiku-4.5)
+#   OPENROUTER_MODEL     optional (defaults to anthropic/claude-sonnet-latest)
+#   CONDENSE_MODEL       optional (defaults to anthropic/claude-haiku-latest)
 
 [[d1_databases]]
 binding = "DB"

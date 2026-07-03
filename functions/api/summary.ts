@@ -20,7 +20,7 @@ interface Env {
   MAX_MESSAGES_PER_IP_PER_DAY?: string;
 }
 
-const DEFAULT_MODEL = "anthropic/claude-sonnet-4";
+const DEFAULT_MODEL = "anthropic/claude-sonnet-latest";
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
   const { request, env } = context;

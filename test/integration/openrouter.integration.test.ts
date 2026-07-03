@@ -4,7 +4,7 @@ import { fileAssetFetch } from "../helpers.ts";
 
 // Opt-in: only runs with RUN_INTEGRATION=1 and a real OPENROUTER_API_KEY.
 const ENABLED = process.env.RUN_INTEGRATION === "1" && !!process.env.OPENROUTER_API_KEY;
-const MODEL = process.env.OPENROUTER_MODEL || "anthropic/claude-sonnet-4";
+const MODEL = process.env.OPENROUTER_MODEL || "anthropic/claude-sonnet-latest";
 
 describe.skipIf(!ENABLED)("OpenRouter (live)", () => {
   it("streams tokens for a simple turn", async () => {
