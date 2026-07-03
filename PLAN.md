@@ -103,7 +103,7 @@ The `send` callback (already used for `{token}`, `{lang}`, `{done}`) gains a new
 ### Modify: `functions/api/chat.ts`
 
 - Read `body.lastRequestAt` (number) and `body.condensedSummary` (string) from the POST body.
-- Read new env vars: `CONDENSE_MODEL` (default `anthropic/claude-haiku-4`), `CONDENSE_TOKEN_THRESHOLD`, `CONDENSE_CACHE_TTL_SECONDS`.
+- Read new env vars: `CONDENSE_MODEL` (default `anthropic/claude-haiku-4.5`), `CONDENSE_TOKEN_THRESHOLD`, `CONDENSE_CACHE_TTL_SECONDS`.
 - Pass them through to `streamChatResponse()`.
 
 ### Modify: `public/frontend/state.js`
@@ -144,7 +144,7 @@ The `send` callback (already used for `{token}`, `{lang}`, `{done}`) gains a new
 
 | Env var | Default | Rationale |
 |---|---|---|
-| `CONDENSE_MODEL` | `anthropic/claude-haiku-4` | ~20x cheaper than Sonnet for a simple summarization task |
+| `CONDENSE_MODEL` | `anthropic/claude-haiku-4.5` | ~20x cheaper than Sonnet for a simple summarization task |
 | `CONDENSE_TOKEN_THRESHOLD` | `8000` | ~32K characters ≈ well beyond the system prompt + a few turns |
 | `CONDENSE_CACHE_TTL_SECONDS` | `300` | Matches Anthropic's ephemeral cache TTL |
 
