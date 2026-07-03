@@ -156,7 +156,7 @@ describe("condenseHistory", () => {
 
     const result = await condenseHistory(messages, {
       apiKey: "test-key",
-      model: "anthropic/claude-haiku-latest",
+      model: "~anthropic/claude-haiku-latest",
       fetchImpl,
       lang: "en",
     });
@@ -169,7 +169,7 @@ describe("condenseHistory", () => {
     // Verify it sent a non-streaming request
     const body = JSON.parse((fetchImpl as any).mock.calls[0][1].body);
     expect(body.stream).toBe(false);
-    expect(body.model).toBe("anthropic/claude-haiku-latest");
+    expect(body.model).toBe("~anthropic/claude-haiku-latest");
   });
 
   it("strips {{quote}} markers from the transcript sent to the summariser", async () => {

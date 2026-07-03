@@ -25,7 +25,7 @@ export interface StreamChatOptions {
   title?: string;
   /** ISO 639-1 language code for the reader (e.g. "en", "es", "de"). Selects system prompt and Bible translation. */
   lang?: string;
-  /** Cheap model for condensation (e.g. "anthropic/claude-haiku-latest"). If unset, condensation is disabled. */
+  /** Cheap model for condensation (e.g. "~anthropic/claude-haiku-latest"). If unset, condensation is disabled. */
   condenseModel?: string;
   /** Token-count threshold above which condensation may trigger (default 8000). */
   condenseThreshold?: number;

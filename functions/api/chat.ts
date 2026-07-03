@@ -25,8 +25,8 @@ interface Env {
   CONDENSE_CACHE_TTL_SECONDS?: string;
 }
 
-const DEFAULT_MODEL = "anthropic/claude-sonnet-latest";
-const DEFAULT_CONDENSE_MODEL = "anthropic/claude-haiku-latest";
+const DEFAULT_MODEL = "~anthropic/claude-sonnet-latest";
+const DEFAULT_CONDENSE_MODEL = "~anthropic/claude-haiku-latest";
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
   const { request, env } = context;

@@ -47,8 +47,8 @@ Local secrets live in `.dev.vars` (gitignored):
 
 ```
 OPENROUTER_API_KEY=sk-or-...
-OPENROUTER_MODEL=anthropic/claude-sonnet-latest  # optional; any tool-calling model on OpenRouter
-CONDENSE_MODEL=anthropic/claude-haiku-latest     # optional; cheap model for conversation condensation
+OPENROUTER_MODEL=~anthropic/claude-sonnet-latest  # optional; any tool-calling model on OpenRouter
+CONDENSE_MODEL=~anthropic/claude-haiku-latest     # optional; cheap model for conversation condensation
 MAX_MESSAGES_PER_CONVERSATION=200          # optional; per-conversation user-message cap
 MAX_MESSAGES_PER_IP_PER_DAY=300            # optional; per-IP daily request cap
 ```
@@ -67,7 +67,7 @@ losing context.
 
 | Env var | Default | Purpose |
 | --- | --- | --- |
-| `CONDENSE_MODEL` | `anthropic/claude-haiku-latest` | Cheap/fast model used for summarization |
+| `CONDENSE_MODEL` | `~anthropic/claude-haiku-latest` | Cheap/fast model used for summarization |
 | `CONDENSE_TOKEN_THRESHOLD` | `8000` | Token estimate above which condensation may trigger |
 | `CONDENSE_CACHE_TTL_SECONDS` | `300` (5 min) | Condensation only fires when the prompt cache has gone cold |
 
@@ -289,7 +289,7 @@ someone is actually reading.
   reuse the same `src/` modules unchanged.
 - Scripture is fetched per-book at request time from the bundled JSON via the
   `get_passage` tool, so the model never invents verse text.
-- Two models work together: the **primary model** (default `claude-sonnet-latest`)
+- Two models work together: the **primary model** (default `~anthropic/claude-sonnet-latest`)
   handles all conversation and tool use; a **condensation model** (default
-  `claude-haiku-latest`) cheaply summarizes long conversations when the prompt
+  `~anthropic/claude-haiku-latest`) cheaply summarizes long conversations when the prompt
   cache has expired, keeping token costs manageable.
