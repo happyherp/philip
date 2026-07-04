@@ -187,11 +187,12 @@ function addBubble(role, markdown) {
 
 /**
  * Set the text of a read note, e.g. "Reading John 3 in WEB" while a fetch is in
- * flight, or "Read John 3 in WEB" once it's done. The `reading` flag adds the
- * pulsing-dots indicator (shared `.thinking` style).
+ * flight, or "Read John 3 in WEB" once it's done. Read notes are purely
+ * informational — the pulsing activity indicator lives in the assistant bubble
+ * (see `.thinking`), so it stays anchored to the reply rather than floating on
+ * this line.
  */
 function setReadText(el, reference, translation, reading) {
-  el.classList.toggle("thinking", reading);
   el.textContent = (reading ? t.reading : t.read)
     .replace("{reference}", reference)
     .replace("{translation}", translation);
@@ -373,8 +374,8 @@ async function send(text) {
       const el = makeReadEl(reference, translation, true);
       log.insertBefore(el, assistantWrap);
       pendingRead = { el, reference, translation };
-      // The read line now carries the activity indicator instead of the bubble.
-      bubble.classList.remove("thinking");
+      // Keep the pulsing indicator in the assistant bubble while Philip reads
+      // and then thinks; it clears once the first answer token arrives.
     },
     onCondensed: ({ summary, upToIndex }) => {
       state.condensedSummary = summary;
