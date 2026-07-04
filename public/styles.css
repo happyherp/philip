@@ -315,6 +315,16 @@ body {
   font-family: ui-sans-serif, system-ui, sans-serif;
   white-space: nowrap;
 }
+.about-model {
+  margin: 0;
+  color: var(--ink);
+}
+.about-model code,
+.about-model .about-model-id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+  color: var(--accent);
+}
 .about-github {
   display: inline-block;
   margin-top: 0.3em;

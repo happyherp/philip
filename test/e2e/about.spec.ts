@@ -8,6 +8,15 @@ import { test, expect } from "@playwright/test";
  */
 test.describe("about", () => {
   test("opens from the chip and shows the key sections", async ({ page }) => {
+    // The underlying model is served by a Pages Function that `serve` doesn't
+    // run, so stub it to confirm the About panel names the configured model.
+    await page.route("**/api/model", (route) =>
+      route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ model: "anthropic/claude-sonnet-4" }),
+      }),
+    );
+
     await page.goto("/");
 
     const overlay = page.locator("#about");
@@ -22,13 +31,24 @@ test.describe("about", () => {
       "What it does",
       "Languages Philip speaks",
       "Bible translations",
+      "Underlying model",
       "Open source",
     ]);
+
+    // Faithful-to-the-text ("bibeltreu"): quotes come from the real text.
+    await expect(overlay.locator(".about-features")).toContainText(
+      "Faithful to the text",
+    );
 
     // The bundled translations are listed from the generated data.
     await expect(overlay).toContainText("World English Bible");
     await expect(overlay).toContainText("Reina-Valera 1909");
     await expect(overlay).toContainText("Luther Bibel 1545");
+
+    // The underlying model, named from /api/model.
+    await expect(overlay.locator(".about-model-id")).toHaveText(
+      "anthropic/claude-sonnet-4",
+    );
 
     // Links out to the repository.
     await expect(overlay.locator(".about-github")).toHaveAttribute(

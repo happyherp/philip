@@ -17,6 +17,24 @@ let contentEl = null;
 let lastStrings = null;
 let lastLang = "en";
 
+// The configured LLM id, fetched once from /api/model (lazily, on first open).
+// null until fetched; "" if the fetch failed (so we show a graceful fallback).
+let modelName = null;
+let modelPromise = null;
+
+function fetchModel() {
+  if (modelPromise) return modelPromise;
+  modelPromise = fetch("/api/model")
+    .then((res) => (res.ok ? res.json() : null))
+    .then((data) => {
+      modelName = typeof data?.model === "string" ? data.model : "";
+    })
+    .catch(() => {
+      modelName = "";
+    });
+  return modelPromise;
+}
+
 function el(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -82,6 +100,23 @@ function render(a) {
     contentEl.appendChild(el("h4", "about-subhead", a.scholarly_label));
     contentEl.appendChild(renderTranslationGroup(scholarly, a.coverage));
   }
+
+  // The underlying LLM, named from the server's configured model id.
+  contentEl.appendChild(el("h3", "about-section-title", a.model_title));
+  const modelLine = el("p", "about-model");
+  if (modelName == null) {
+    modelLine.textContent = a.model_loading;
+    // Kick off the fetch; re-render once it resolves if the panel is still open.
+    fetchModel().then(() => {
+      if (overlayEl && !overlayEl.hidden && lastStrings) render(lastStrings);
+    });
+  } else if (modelName) {
+    modelLine.appendChild(document.createTextNode(`${a.model_prefix} `));
+    modelLine.appendChild(el("span", "about-model-id", modelName));
+  } else {
+    modelLine.textContent = a.model_unknown;
+  }
+  contentEl.appendChild(modelLine);
 
   // Open source / GitHub
   contentEl.appendChild(el("h3", "about-section-title", a.github_title));
