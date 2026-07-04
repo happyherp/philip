@@ -5,6 +5,7 @@ import { streamChat } from "./frontend/chat-client.js";
 import { summarizeConversation } from "./frontend/summary-client.js";
 import {
   addRecord,
+  applySummary,
   makeRecord,
   removeRecord,
   renameRecord,
@@ -485,19 +486,30 @@ function hasReply() {
 }
 
 /**
- * Move the active conversation into the saved list, labelling it with an
- * LLM-generated title + verse-referencing summary (falling back to the first
- * user turn when the summariser is unavailable). No-op for empty conversations.
+ * Move the active conversation into the saved list. The record is archived
+ * *immediately* with a fallback title (the first user turn) so starting a new
+ * conversation is instant; the LLM-generated title + verse-referencing summary
+ * is fetched in the background and patched into the record when it arrives.
+ * No-op for empty conversations.
  */
-async function archiveActive() {
+function archiveActive() {
   if (!hasReply()) return;
   const messages = toHistory(state);
   const recordLang = lang;
-  const { title, summary } = await summarizeConversation({ messages, lang });
-  const record = makeRecord({ messages, lang: recordLang, title, summary });
+  // Archive now with the fallback label — no network wait on the "new" action.
+  const record = makeRecord({ messages, lang: recordLang, title: "", summary: "" });
   conversations = addRecord(conversations, record);
   saveConversations();
   renderConversationList();
+  // Upgrade the label asynchronously. If the summariser is unavailable the
+  // fallback title simply stays. Guard against the record having since been
+  // deleted by re-reading the current list inside the patch.
+  summarizeConversation({ messages, lang: recordLang }).then(({ title, summary }) => {
+    if (!title && !summary) return;
+    conversations = applySummary(conversations, record.id, { title, summary });
+    saveConversations();
+    renderConversationList();
+  });
 }
 
 /** Reset the active conversation to a clean slate (welcome bubble only). */
@@ -574,7 +586,7 @@ function renderConversationList() {
 async function openConversation(id) {
   const target = conversations.find((c) => c.id === id);
   if (!target) return;
-  await archiveActive();
+  archiveActive();
   conversations = removeRecord(conversations, id);
   saveConversations();
   if (typeof target.lang === "string") switchLang(target.lang);
@@ -602,20 +614,11 @@ function deleteConversation(id) {
 }
 
 if (newBtn) {
-  newBtn.addEventListener("click", async (e) => {
+  newBtn.addEventListener("click", (e) => {
     e.preventDefault();
-    if (newBtn.dataset.busy === "1") return;
-    const wasActive = hasReply();
-    if (wasActive) {
-      newBtn.dataset.busy = "1";
-      newBtn.textContent = t.saving;
-      try {
-        await archiveActive();
-      } finally {
-        newBtn.dataset.busy = "";
-        newBtn.textContent = t.new_chat;
-      }
-    }
+    // Archiving is instant (the summary is fetched in the background), so the
+    // new conversation starts with no perceptible delay.
+    archiveActive();
     resetActive();
     const url = new URL(location.href);
     url.searchParams.delete("c");

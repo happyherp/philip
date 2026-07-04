@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   addRecord,
+  applySummary,
   fallbackTitle,
   makeRecord,
   newId,
@@ -74,5 +75,37 @@ describe("saved-conversations store", () => {
 
     list = removeRecord(list, r2.id);
     expect(list.map((c) => c.id)).toEqual([r1.id]);
+  });
+
+  it("applies a generated title/summary to a record by id", () => {
+    const r = makeRecord({ messages: msgs, lang: "en", title: "one", summary: "" });
+    let list = addRecord([], r);
+
+    list = applySummary(list, r.id, { title: "John 3", summary: "John 3:16 discussed" });
+    const patched = list.find((c) => c.id === r.id);
+    expect(patched.title).toBe("John 3");
+    expect(patched.summary).toBe("John 3:16 discussed");
+  });
+
+  it("applySummary keeps the fallback when the generated values are empty", () => {
+    const r = makeRecord({ messages: msgs, lang: "en", title: "one", summary: "keep" });
+    let list = addRecord([], r);
+
+    list = applySummary(list, r.id, { title: "  ", summary: "" });
+    const patched = list.find((c) => c.id === r.id);
+    expect(patched.title).toBe("one");
+    expect(patched.summary).toBe("keep");
+  });
+
+  it("applySummary leaves other records untouched and unknown ids a no-op", () => {
+    const r1 = makeRecord({ messages: msgs, lang: "en", title: "one", summary: "" });
+    const r2 = makeRecord({ messages: msgs, lang: "en", title: "two", summary: "" });
+    const list = addRecord(addRecord([], r1), r2);
+
+    const patched = applySummary(list, r1.id, { title: "renamed", summary: "s" });
+    expect(patched.find((c) => c.id === r2.id).title).toBe("two");
+
+    // Unknown id returns an equivalent list.
+    expect(applySummary(list, "nope", { title: "x", summary: "y" })).toEqual(list);
   });
 });
