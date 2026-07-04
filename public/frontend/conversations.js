@@ -81,3 +81,20 @@ export function renameRecord(list, id, title) {
     c.id === id ? { ...c, title: title.trim() || c.title } : c,
   );
 }
+
+/**
+ * Patch a record's title/summary with values generated asynchronously (after
+ * the conversation was already archived with a fallback title). Empty values
+ * are ignored so the fallback survives when the summariser is unavailable.
+ * Returns a new array; an unknown id is a no-op.
+ */
+export function applySummary(list, id, { title, summary } = {}) {
+  return list.map((c) => {
+    if (c.id !== id) return c;
+    return {
+      ...c,
+      title: (title || "").trim() || c.title,
+      summary: (summary || "").trim() || c.summary,
+    };
+  });
+}
