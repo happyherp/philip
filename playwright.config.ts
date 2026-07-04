@@ -14,7 +14,15 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"] },
+      use: {
+        ...devices["Desktop Chrome"],
+        // In the managed remote environment a Chromium is pre-installed at a
+        // fixed path that may differ from the version @playwright/test would
+        // otherwise download; honour it when present.
+        ...(process.env.PW_CHROMIUM_PATH
+          ? { launchOptions: { executablePath: process.env.PW_CHROMIUM_PATH } }
+          : {}),
+      },
     },
   ],
   webServer: {
