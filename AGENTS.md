@@ -13,3 +13,8 @@ When you are done with a task:
 5. **Open a pull request** against `main`.
 
 Never commit directly to `main`, unless told so explicitly by the user.  
+
+## Test Driven Development
+
+Write tests for every feature.  
+For Bugs, write the Test first, confirm that it breaks exactly in the expected way. Only then write the fix. Then run the tests again.
