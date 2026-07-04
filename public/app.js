@@ -11,6 +11,7 @@ import {
   sanitizeList,
 } from "./frontend/conversations.js";
 import { detectLang, getStrings } from "./i18n.js";
+import { setupAbout, applyAboutI18n } from "./frontend/about.js";
 
 let lang = detectLang();
 let t = getStrings(lang);
@@ -46,6 +47,7 @@ function applyI18n() {
     convToggleBtn.title = t.conversations_title;
   }
   if (convTitleEl) convTitleEl.textContent = t.conversations_title;
+  applyAboutI18n(t, lang);
   updateThemeToggle();
   renderConversationList();
   updateShareState();
@@ -276,6 +278,7 @@ async function loadSharedConversation(id) {
 }
 
 // --- Boot ---
+setupAbout();
 loadConversations();
 applyI18n();
 applyWelcomeLang();

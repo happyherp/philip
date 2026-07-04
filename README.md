@@ -1,5 +1,7 @@
 # Philip — A Guided Bible Reading Companion
 
+> **Try it (dev):** [philip-3jf.pages.dev](https://philip-3jf.pages.dev/)
+
 > *"How can I understand, unless someone guides me?"*
 > — Acts 8:31
 
