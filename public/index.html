@@ -43,57 +43,10 @@
     />
   </head>
   <body>
-    <header class="topbar">
-      <h1>Philip</h1>
-      <a href="#" id="toggle-conversations" class="chip" aria-expanded="false" aria-controls="conversations" title="Saved conversations" hidden>saved</a>
-      <a href="#" id="share-chat" class="chip disabled" aria-disabled="true" title="Copy a link to this conversation">share</a>
-      <a href="#" id="new-chat" class="chip" title="Start a fresh conversation">new</a>
-      <a href="#" id="about-link" class="chip" title="About Philip" aria-haspopup="dialog" aria-expanded="false">about</a>
-      <a href="#" id="theme-toggle" class="chip chip-theme" title="Switch theme" role="button">☾</a>
-      <p class="tagline">“Do you understand what you are reading?” — Acts 8:30</p>
-
-      <!-- Past conversations saved in this browser. Opened from the "saved"
-           chip; the chip itself only appears once there's something in the list,
-           so the first-visit start page stays thin. -->
-      <nav id="conversations" class="conversations" aria-label="Saved conversations" hidden>
-        <h2 id="conversations-title" class="conversations-title">Saved conversations</h2>
-        <ul id="conversation-list" class="conversation-list"></ul>
-      </nav>
-    </header>
-
-    <main id="log" class="log" aria-live="polite">
-      <div class="msg msg-assistant">
-        <div class="msg-body">
-          <p>Hi — I’m Philip.</p>
-          <p>
-            Let’s read the Bible together, a few verses at a time. Tell me where
-            to start, bring a question that’s been on your mind, or just say
-            <em>start</em> and I’ll pick a place.
-          </p>
-        </div>
-      </div>
-    </main>
-
-    <form id="composer" class="composer">
-      <textarea
-        id="input"
-        rows="1"
-        placeholder="Type a verse, a question, or “start”…"
-        autocomplete="off"
-      ></textarea>
-      <div class="composer-actions">
-        <button id="send" type="submit">Send</button>
-      </div>
-    </form>
-
-    <!-- About overlay: what Philip is, its features, languages and Bible
-         translations. Content is built and translated by frontend/about.js. -->
-    <div id="about" class="about-overlay" role="dialog" aria-modal="true" aria-labelledby="about-title" hidden>
-      <div class="about-panel">
-        <div class="about-content"></div>
-      </div>
-    </div>
-
+    <!-- The entire UI (header, log, composer, about overlay) is rendered by the
+         Preact app in ./app.js. The inline theme script above still runs first
+         so there's no flash of the wrong colors before the app mounts. -->
+    <div id="app"></div>
     <script type="module" src="./app.js"></script>
   </body>
 </html>

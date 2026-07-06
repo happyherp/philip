@@ -1,0 +1,85 @@
+// The conversation log: the welcome bubble, committed messages, and the
+// in-progress ("active") turn while Philip streams a reply.
+//
+// Message bodies are markdown plus bible-quote markers, rendered by the
+// imperative `renderMessageInto` (render.js + quotes.js) into a ref — so all the
+// quote parsing, popups and sanitization stay exactly as they were, just wrapped
+// in a Preact component.
+import { html, useRef, useLayoutEffect } from "../vendor/preact.standalone.js";
+import { renderMessageInto } from "../render.js";
+
+/** The static welcome bubble, translated from the current UI strings. */
+export function Welcome({ t }) {
+  return html`
+    <div class="msg msg-assistant">
+      <div class="msg-body">
+        <p>${t.welcome_greeting}</p>
+        <p>${t.welcome_body} <em>${t.welcome_keyword}</em> ${t.welcome_body_end}</p>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * A message body filled by the imperative markdown/quote renderer. `md` is the
+ * raw message text; changing it (e.g. streaming tokens) re-renders in place.
+ */
+export function MessageBody({ md, lang, className = "msg-body" }) {
+  const ref = useRef(null);
+  useLayoutEffect(() => {
+    if (ref.current) renderMessageInto(ref.current, md ?? "", { lang });
+  }, [md, lang, className]);
+  return html`<div class=${className} ref=${ref}></div>`;
+}
+
+/** A "Reading …" / "Read …" note for a passage Philip fetched while answering. */
+export function ReadNote({ reference, translation, reading, t }) {
+  const text = (reading ? t.reading : t.read)
+    .replace("{reference}", reference)
+    .replace("{translation}", translation);
+  return html`<div class="read-note">${text}</div>`;
+}
+
+/** A committed user/assistant bubble. */
+function Bubble({ role, content, lang }) {
+  return html`
+    <div class=${`msg msg-${role}`}>
+      <${MessageBody} md=${content} lang=${lang} />
+    </div>
+  `;
+}
+
+/**
+ * The turn currently streaming in: finalized read notes, the in-flight read, and
+ * the assistant bubble (pulsing while it "thinks", then filling with the reply,
+ * or showing an error).
+ */
+function ActiveTurn({ draft, lang, t }) {
+  const cls = "msg-body" + (draft.thinking ? " thinking" : "");
+  return html`
+    ${draft.reads.map(
+      (r, i) =>
+        html`<${ReadNote} key=${"r" + i} reference=${r.reference} translation=${r.translation} reading=${false} t=${t} />`,
+    )}
+    ${draft.pendingRead &&
+    html`<${ReadNote} reference=${draft.pendingRead.reference} translation=${draft.pendingRead.translation} reading=${true} t=${t} />`}
+    <div class="msg msg-assistant">
+      ${draft.error
+        ? html`<div class=${cls}><div class="error">${t.error_prefix}${draft.error}</div></div>`
+        : html`<${MessageBody} className=${cls} md=${draft.content || ""} lang=${lang} />`}
+    </div>
+  `;
+}
+
+/** The full log contents: welcome, committed messages, then the active turn. */
+export function MessageList({ msgs, draft, lang, t }) {
+  return html`
+    <${Welcome} t=${t} />
+    ${msgs.map((m, i) =>
+      m.role === "read"
+        ? html`<${ReadNote} key=${i} reference=${m.reference} translation=${m.translation} reading=${false} t=${t} />`
+        : html`<${Bubble} key=${i} role=${m.role} content=${m.content} lang=${lang} />`,
+    )}
+    ${draft && html`<${ActiveTurn} draft=${draft} lang=${lang} t=${t} />`}
+  `;
+}
