@@ -224,6 +224,97 @@ describe("buildQuoteElement", () => {
   });
 });
 
+describe("copy to clipboard", () => {
+  let writeText;
+
+  beforeEach(() => {
+    writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function buildFilledBlock() {
+    const { impl } = fetchStub({ "/bible/web/john.json": JOHN_WEB });
+    const [marker] = findMarkers("{{quote John 8:31-32 @web}}");
+    const el = buildQuoteElement(marker, "web", impl);
+    document.body.appendChild(el);
+    await flush();
+    return el;
+  }
+
+  it("puts a copy button with the standard copy icon on block quotes", async () => {
+    const el = await buildFilledBlock();
+    const btn = el.querySelector("button.quote-copy");
+    expect(btn).not.toBeNull();
+    // Accessible name + a tooltip, and an inline SVG icon (no image request).
+    expect(btn.getAttribute("aria-label")).toBeTruthy();
+    expect(btn.getAttribute("title")).toBeTruthy();
+    expect(btn.querySelector("svg")).not.toBeNull();
+  });
+
+  it("does not put a copy button on inline quotes", async () => {
+    const { impl } = fetchStub({ "/bible/web/john.json": JOHN_WEB });
+    const [marker] = findMarkers("{{q John 8:32 @web}}");
+    const el = buildQuoteElement(marker, "web", impl);
+    document.body.appendChild(el);
+    await flush();
+    expect(el.querySelector(".quote-copy")).toBeNull();
+  });
+
+  it("copies the clean verse text and reference on click, without verse numbers", async () => {
+    const el = await buildFilledBlock();
+    el.querySelector("button.quote-copy").dispatchEvent(
+      new MouseEvent("click", { bubbles: true }),
+    );
+    await flush();
+
+    expect(writeText).toHaveBeenCalledTimes(1);
+    const copied = writeText.mock.calls[0][0];
+    expect(copied).toContain("If you remain in my word, then you are truly my disciples.");
+    expect(copied).toContain("You will know the truth, and the truth will make you free.");
+    expect(copied).toContain("John 8:31–32");
+    expect(copied).toContain("WEB");
+    // The superscript verse counters shown on screen are not part of the copy.
+    expect(copied).not.toContain("31If you");
+  });
+
+  it("shows a “copied to clipboard” message that clears after 3 seconds", async () => {
+    const el = await buildFilledBlock();
+    vi.useFakeTimers();
+
+    el.querySelector("button.quote-copy").dispatchEvent(
+      new MouseEvent("click", { bubbles: true }),
+    );
+
+    const msg = el.querySelector(".quote-copied-msg");
+    expect(msg).not.toBeNull();
+    expect(msg.hidden).toBe(false);
+    expect(msg.textContent).toBeTruthy();
+
+    vi.advanceTimersByTime(2999);
+    expect(msg.hidden).toBe(false);
+    vi.advanceTimersByTime(1);
+    expect(msg.hidden).toBe(true);
+  });
+
+  it("survives a blocked clipboard without throwing", async () => {
+    writeText.mockRejectedValue(new Error("denied"));
+    const el = await buildFilledBlock();
+    expect(() =>
+      el.querySelector("button.quote-copy").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      ),
+    ).not.toThrow();
+    await flush();
+  });
+});
+
 describe("excerpt quotes", () => {
   it("parses an excerpt in straight or curly quotes, on either keyword", () => {
     const [a] = findMarkers('{{quote John 8:32 @web "the truth will make you free"}}');
