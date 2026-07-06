@@ -73,9 +73,9 @@ body {
   background: var(--panel);
 }
 .topbar-logo {
-  height: 1.5rem;
+  height: 1.8rem;
   width: auto;
-  vertical-align: -0.28em;
+  vertical-align: -0.5em;
   margin-right: 0.4em;
 }
 .topbar h1 {

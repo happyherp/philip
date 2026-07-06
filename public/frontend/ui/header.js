@@ -75,7 +75,7 @@ export function Topbar({
   const dark = theme === "dark";
   return html`
     <header class="topbar" ref=${topbarRef}>
-      <img class="topbar-logo" src="./logo.svg" alt="" width="30" height="30" />
+      <img class="topbar-logo" src="./philip-icon.png" alt="" width="300" height="227" />
       <h1>Philip</h1>
       <${Chip}
         id="toggle-conversations"
