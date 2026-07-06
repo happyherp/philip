@@ -72,6 +72,12 @@ body {
   border-bottom: 1px solid var(--border);
   background: var(--panel);
 }
+.topbar-logo {
+  height: 1.5rem;
+  width: auto;
+  vertical-align: -0.28em;
+  margin-right: 0.4em;
+}
 .topbar h1 {
   margin: 0;
   font-size: 1.5rem;

@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="6 26 108 57" role="img" aria-label="Open book">
+  <defs>
+    <linearGradient id="page" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fdf9f1"/>
+      <stop offset="1" stop-color="#e9dfca"/>
+    </linearGradient>
+    <linearGradient id="base" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#cbab6f"/>
+      <stop offset="1" stop-color="#a9863f"/>
+    </linearGradient>
+  </defs>
+
+  <!-- book base / visible page thickness -->
+  <path d="M11 71 Q35 63 60 66 Q85 63 109 71 L109 79 Q85 71 60 76 Q35 71 11 79 Z"
+        fill="url(#base)" stroke="#1c2340" stroke-width="2.4"
+        stroke-linejoin="round" stroke-linecap="round"/>
+
+  <!-- left page -->
+  <path d="M60 30 Q37 24 14 35 L11 72 Q35 63 60 66 Z"
+        fill="url(#page)" stroke="#1c2340" stroke-width="2.6"
+        stroke-linejoin="round" stroke-linecap="round"/>
+  <!-- right page -->
+  <path d="M60 30 Q83 24 106 35 L109 72 Q85 63 60 66 Z"
+        fill="url(#page)" stroke="#1c2340" stroke-width="2.6"
+        stroke-linejoin="round" stroke-linecap="round"/>
+
+  <!-- text lines -->
+  <g fill="none" stroke="#c2a068" stroke-width="2.2" stroke-linecap="round">
+    <path d="M21 43 Q36 39 51 44"/>
+    <path d="M20 50 Q36 46 52 51"/>
+    <path d="M19 57 Q35 53 52 58"/>
+    <path d="M18 63 Q35 59 52 64"/>
+    <path d="M69 44 Q84 39 99 43"/>
+    <path d="M68 51 Q84 46 100 50"/>
+    <path d="M68 58 Q85 53 101 57"/>
+    <path d="M68 64 Q85 59 102 63"/>
+  </g>
+</svg>
