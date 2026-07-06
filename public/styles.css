@@ -58,6 +58,13 @@ body {
   flex-direction: column;
 }
 
+/* The Preact app mounts into #app. `display: contents` keeps the wrapper out of
+   the box tree so the header, log and composer remain direct flex children of
+   <body> — the log must stay flex:1 with its own scroll, not grow to content. */
+#app {
+  display: contents;
+}
+
 .topbar {
   position: relative;
   text-align: center;

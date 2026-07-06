@@ -265,6 +265,7 @@ npm run build:bible:extra      # RV1909 (Spanish) + Luther 1545 (German)
 npm run build:bible:originals  # Tischendorf Greek NT, WLC Hebrew, LXX, Vulgate
 npm run gen:frontend           # regenerates public/frontend/bible-data.gen.js
 npm run vendor:marked          # pins the markdown renderer into public/frontend/vendor
+npm run vendor:preact          # pins Preact + htm (standalone ESM) into public/frontend/vendor
 ```
 
 ## Architecture notes
@@ -279,3 +280,10 @@ npm run vendor:marked          # pins the markdown renderer into public/frontend
   handles all conversation and tool use; a **condensation model** (default
   `~anthropic/claude-haiku-latest`) cheaply summarizes long conversations when the prompt
   cache has expired, keeping token costs manageable.
+- The frontend is a small **Preact + htm** app with **no build step**: `public/app.js`
+  mounts the components under `public/frontend/ui/` (header, message log, composer,
+  about overlay), and Preact is vendored as a single ESM bundle
+  (`public/frontend/vendor/preact.standalone.js`, refreshed with `npm run vendor:preact`),
+  exactly like `marked`. The framework-agnostic modules it builds on
+  (`state.js`, `render.js`, `quotes.js`, `chat-client.js`, `summary-client.js`,
+  `conversations.js`, `i18n.js`) are plain ES modules and stay unit-testable in jsdom.
