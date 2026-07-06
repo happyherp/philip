@@ -382,6 +382,7 @@ body {
 /* Bible quotes resolved from {{quote …}} / {{q …}} markers. The block quote
    carries its full styling itself so it also works inside the popup. */
 blockquote.quote-block {
+  position: relative;
   margin: 0.4em 0;
   padding: 10px 14px;
   border-left: 3px solid var(--accent);
@@ -396,6 +397,52 @@ blockquote.quote-block {
   letter-spacing: 0.06em;
   color: var(--muted);
   margin-bottom: 0.35em;
+  padding-right: 34px; /* clear the copy button in the top-right corner */
+}
+/* Copy-to-clipboard control, pinned to the quote's top-right corner. */
+.quote-copy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+.quote-copy:hover,
+.quote-copy:focus-visible {
+  opacity: 1;
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.quote-copy svg {
+  width: 16px;
+  height: 16px;
+}
+/* Transient "copied to clipboard" confirmation, beside the button. */
+.quote-copied-msg {
+  position: absolute;
+  top: 10px;
+  right: 42px;
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px 8px;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 2px 8px var(--shadow);
 }
 .quote-block .quote-text {
   display: block;

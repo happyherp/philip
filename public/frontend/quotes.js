@@ -3,6 +3,7 @@
 // the marker against the bundled /bible/ JSON and builds the display element.
 // Verse text is always set via textContent — the model can never alter it.
 import { BOOKS, TRANSLATIONS } from "./bible-data.gen.js";
+import { detectLang, getStrings } from "../i18n.js";
 
 const MARKER_RE =
   /\{\{(quote|q|ref)\s+([^{}@"“”]+?)(?:\s*@([a-z0-9]+))?(?:\s+(?:"([^"{}]+)"|“([^”{}]+)”))?\s*\}\}/g;
@@ -245,6 +246,63 @@ function refElement(textContent, url) {
   return el;
 }
 
+// The standard copy icon (two overlapping sheets) used across the app, drawn
+// inline so it needs no image request and inherits the button's text color.
+const COPY_ICON_SVG =
+  '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" ' +
+  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' +
+  '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>' +
+  '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>' +
+  "</svg>";
+
+/**
+ * Plain-text form of a passage for the clipboard: the verse text on its own
+ * line (no on-screen superscript counters), then the reference and translation.
+ */
+function copyPlainText(verses, refLabel, meta) {
+  return `${versesText(verses)}\n\n— ${refLabel} (${meta.name})`;
+}
+
+/**
+ * Add a top-right copy button to a block quote. Clicking it writes the plain
+ * passage text to the clipboard and flashes a "copied to clipboard" message for
+ * three seconds. The message shows on click regardless of clipboard support so
+ * the action always feels acknowledged; a blocked clipboard just fails quietly.
+ */
+function addCopyButton(el, verses, refLabel, meta) {
+  const str = getStrings(detectLang());
+
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "quote-copy";
+  btn.setAttribute("aria-label", str.verse_copy);
+  btn.title = str.verse_copy;
+  btn.innerHTML = COPY_ICON_SVG;
+
+  const msg = document.createElement("span");
+  msg.className = "quote-copied-msg";
+  msg.setAttribute("role", "status");
+  msg.textContent = str.verse_copied;
+  msg.hidden = true;
+
+  let hideTimer = null;
+  btn.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const clip = navigator.clipboard;
+    if (clip && clip.writeText) {
+      clip.writeText(copyPlainText(verses, refLabel, meta)).catch(() => {});
+    }
+    msg.hidden = false;
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(() => {
+      msg.hidden = true;
+    }, 3000);
+  });
+
+  el.append(btn, msg);
+}
+
 function fillBlock(el, verses, refLabel, meta, url) {
   el.textContent = "";
   el.classList.remove("quote-pending");
@@ -270,6 +328,7 @@ function fillBlock(el, verses, refLabel, meta, url) {
   attrib.textContent = `— ${meta.name}`;
 
   el.append(ref, text, attrib);
+  addCopyButton(el, verses, refLabel, meta);
 }
 
 function fillInline(el, verses, refLabel, meta, url) {

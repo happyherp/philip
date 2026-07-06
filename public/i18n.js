@@ -29,6 +29,8 @@ export const I18N = {
     saving: "saving…",
     reading: "Reading {reference} in {translation}",
     read: "Read {reference} in {translation}",
+    verse_copy: "Copy verse",
+    verse_copied: "Copied to clipboard",
     theme_to_dark: "Switch to dark mode",
     theme_to_light: "Switch to light mode",
     about: {
@@ -92,6 +94,8 @@ export const I18N = {
     saving: "guardando…",
     reading: "Leyendo {reference} en {translation}",
     read: "Leído {reference} en {translation}",
+    verse_copy: "Copiar versículo",
+    verse_copied: "Copiado al portapapeles",
     theme_to_dark: "Cambiar a modo oscuro",
     theme_to_light: "Cambiar a modo claro",
     about: {
@@ -155,6 +159,8 @@ export const I18N = {
     saving: "speichern…",
     reading: "Lese {reference} in {translation}",
     read: "{reference} in {translation} gelesen",
+    verse_copy: "Vers kopieren",
+    verse_copied: "In die Zwischenablage kopiert",
     theme_to_dark: "Zum dunklen Modus wechseln",
     theme_to_light: "Zum hellen Modus wechseln",
     about: {
