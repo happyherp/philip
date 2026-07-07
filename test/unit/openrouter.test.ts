@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { consumeStream, runChat } from "../../src/openrouter.ts";
+import { consumeStream, InsufficientCreditsError, runChat } from "../../src/openrouter.ts";
 import {
   DONE,
   contentEvent,
@@ -305,5 +305,46 @@ describe("runChat tool loop", () => {
     const content = JSON.stringify(toolMsg.content);
     expect(content).toContain("Philippians 4:6");
     expect(content.toLowerCase()).toContain("get_passage");
+  });
+
+  it("throws InsufficientCreditsError with the refill URL on HTTP 402", async () => {
+    const body = JSON.stringify({
+      error: {
+        message:
+          "This request requires more credits, or fewer max_tokens. To increase, visit " +
+          "https://openrouter.ai/workspaces/default/keys/8a857238b319f49903152188cbdf0f794b7415a " +
+          "and adjust the key's total limit",
+        code: 402,
+      },
+    });
+    const { fetchImpl } = fetchSequence([new Response(body, { status: 402 })]);
+
+    const err = await runChat([{ role: "user", content: "hi" }], {
+      apiKey: "bad",
+      model: "test/model",
+      fetchImpl,
+      assetFetch: fileAssetFetch(),
+      onToken: () => {},
+    }).catch((e) => e);
+
+    expect(err).toBeInstanceOf(InsufficientCreditsError);
+    expect(err.refillUrl).toBe(
+      "https://openrouter.ai/workspaces/default/keys/8a857238b319f49903152188cbdf0f794b7415a",
+    );
+  });
+
+  it("throws InsufficientCreditsError without a refill URL when none is present", async () => {
+    const { fetchImpl } = fetchSequence([new Response("{}", { status: 402 })]);
+
+    const err = await runChat([{ role: "user", content: "hi" }], {
+      apiKey: "bad",
+      model: "test/model",
+      fetchImpl,
+      assetFetch: fileAssetFetch(),
+      onToken: () => {},
+    }).catch((e) => e);
+
+    expect(err).toBeInstanceOf(InsufficientCreditsError);
+    expect(err.refillUrl).toBeUndefined();
   });
 });

@@ -32,6 +32,18 @@ export function MessageBody({ md, lang, className = "msg-body" }) {
   return html`<div class=${className} ref=${ref}></div>`;
 }
 
+/** The error bubble body: a generic message, or a friendly one for insufficient OpenRouter credits. */
+function ErrorBody({ draft, t }) {
+  if (draft.errorCode === "insufficient_credits") {
+    const [before, after] = t.error_credits.split("{refill}");
+    const word = draft.errorRefillUrl
+      ? html`<a href=${draft.errorRefillUrl} target="_blank" rel="noopener noreferrer">${t.error_credits_refill}</a>`
+      : t.error_credits_refill;
+    return html`<div class="error">${before}${word}${after}</div>`;
+  }
+  return html`<div class="error">${t.error_prefix}${draft.error}</div>`;
+}
+
 /** A "Reading …" / "Read …" note for a passage Philip fetched while answering. */
 export function ReadNote({ reference, translation, reading, t }) {
   const text = (reading ? t.reading : t.read)
@@ -65,7 +77,7 @@ function ActiveTurn({ draft, lang, t }) {
     html`<${ReadNote} reference=${draft.pendingRead.reference} translation=${draft.pendingRead.translation} reading=${true} t=${t} />`}
     <div class="msg msg-assistant">
       ${draft.error
-        ? html`<div class=${cls}><div class="error">${t.error_prefix}${draft.error}</div></div>`
+        ? html`<div class=${cls}><${ErrorBody} draft=${draft} t=${t} /></div>`
         : html`<${MessageBody} className=${cls} md=${draft.content || ""} lang=${lang} />`}
     </div>
   `;

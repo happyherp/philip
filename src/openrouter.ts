@@ -16,6 +16,23 @@ import { searchResultsToText, searchScripture } from "./search.ts";
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const CACHE_BREAKPOINT = { type: "ephemeral" as const };
 
+/** Thrown when OpenRouter rejects a request for lack of credits (HTTP 402). */
+export class InsufficientCreditsError extends Error {
+  /** The OpenRouter "manage keys" URL extracted from the error body, if present. */
+  refillUrl?: string;
+
+  constructor(message: string, refillUrl?: string) {
+    super(message);
+    this.name = "InsufficientCreditsError";
+    this.refillUrl = refillUrl;
+  }
+}
+
+/** Pull the first openrouter.ai URL out of an error body, e.g. a "manage keys" link. */
+function extractOpenRouterUrl(text: string): string | undefined {
+  return text.match(/https:\/\/openrouter\.ai\/[^\s"'\\]+/)?.[0];
+}
+
 /**
  * Apply a cache_control breakpoint to the last user/tool message so
  * the entire conversation prefix up to that point is cached.
@@ -170,6 +187,9 @@ export async function runChat(history: ChatMessage[], deps: RunChatDeps): Promis
 
     if (!res.ok || !res.body) {
       const detail = res.body ? await safeText(res) : "";
+      if (res.status === 402) {
+        throw new InsufficientCreditsError(detail, extractOpenRouterUrl(detail));
+      }
       throw new Error(`OpenRouter request failed: HTTP ${res.status} ${detail}`.trim());
     }
 

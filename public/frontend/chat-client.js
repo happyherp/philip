@@ -13,7 +13,7 @@
  * @param {(lang: string) => void} [opts.onLang] - called when the model chooses a language/translation
  * @param {(condensed: {summary: string, upToIndex: number}) => void} [opts.onCondensed] - called when the server condenses the conversation
  * @param {() => void} [opts.onDone]
- * @param {(message: string, info?: {status?: number, code?: string}) => void} [opts.onError]
+ * @param {(message: string, info?: {status?: number, code?: string, refillUrl?: string}) => void} [opts.onError]
  * @param {number} [opts.lastRequestAt] - unix-ms timestamp of the previous chat request
  * @param {string} [opts.condensedSummary] - existing condensed summary from a prior round
  * @param {boolean} [opts.searchReady] - whether semantic search is confirmed warm (enables the search_scripture tool)
@@ -101,7 +101,8 @@ export async function streamChat({
       else if (evt.condensed && typeof evt.condensed === "object") onCondensed?.(evt.condensed);
       else if (evt.error) {
         finished = true;
-        onError?.(evt.error);
+        if (evt.code || evt.refillUrl) onError?.(evt.error, { code: evt.code, refillUrl: evt.refillUrl });
+        else onError?.(evt.error);
       } else if (evt.done) {
         finish();
       }
