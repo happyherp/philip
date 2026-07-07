@@ -10,7 +10,8 @@ import {
   parseReference,
   passageToText,
 } from "./bible.ts";
-import { GET_PASSAGE_TOOL, SYSTEM_PROMPT } from "./philip.ts";
+import { GET_PASSAGE_TOOL, SEARCH_SCRIPTURE_TOOL, SYSTEM_PROMPT } from "./philip.ts";
+import { searchResultsToText, searchScripture } from "./search.ts";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const CACHE_BREAKPOINT = { type: "ephemeral" as const };
@@ -85,6 +86,11 @@ export interface RunChatDeps {
   systemPrompt?: string;
   /** Default translation id when the model doesn't specify one (e.g. "web", "rv1909", "luther1545"). */
   translationId?: string;
+  /**
+   * Base URL of the semantic-search service (luther-mcp). When set, the
+   * search_scripture tool is offered to the model; when undefined, it is not.
+   */
+  searchUrl?: string;
   /** Called each time the model uses a translation (via get_passage), so the caller can update UI language. */
   onTranslationUsed?: (translationId: string) => void | Promise<void>;
   /**
@@ -123,6 +129,13 @@ export async function runChat(history: ChatMessage[], deps: RunChatDeps): Promis
     ...history,
   ];
 
+  // Offer search_scripture only when a search backend is configured for this
+  // request (the caller confirmed it is warm). Otherwise the model sees a single
+  // tool, matching the single-tool wording in the system prompt.
+  const tools = deps.searchUrl
+    ? [GET_PASSAGE_TOOL, SEARCH_SCRIPTURE_TOOL]
+    : [GET_PASSAGE_TOOL];
+
   let finalText = "";
   const aggregateUsage: ChatUsage = {};
 
@@ -145,7 +158,7 @@ export async function runChat(history: ChatMessage[], deps: RunChatDeps): Promis
         body: JSON.stringify({
           model: deps.model,
           messages: withCacheBreakpoints(messages),
-          tools: [GET_PASSAGE_TOOL],
+          tools,
           tool_choice: "auto",
           stream: true,
         }),
@@ -175,7 +188,12 @@ export async function runChat(history: ChatMessage[], deps: RunChatDeps): Promis
             await deps.onPassageRequest(info);
           }
         }
-        const { text, translationsUsed } = await executeToolCall(call, deps.assetFetch, deps.translationId ?? "web");
+        const { text, translationsUsed } = await executeToolCall(call, {
+          assetFetch: deps.assetFetch,
+          fetchImpl,
+          searchUrl: deps.searchUrl,
+          defaultTranslationId: deps.translationId ?? "web",
+        });
         if (deps.onTranslationUsed) {
           for (const translationId of translationsUsed) await deps.onTranslationUsed(translationId);
         }
@@ -253,11 +271,19 @@ interface ToolCallResult {
   translationsUsed: string[];
 }
 
-async function executeToolCall(
-  call: ToolCall,
-  assetFetch: AssetFetch,
-  defaultTranslationId = "web",
-): Promise<ToolCallResult> {
+interface ExecuteToolOpts {
+  assetFetch: AssetFetch;
+  fetchImpl: typeof fetch;
+  searchUrl?: string;
+  defaultTranslationId?: string;
+}
+
+async function executeToolCall(call: ToolCall, opts: ExecuteToolOpts): Promise<ToolCallResult> {
+  const { assetFetch, fetchImpl, searchUrl, defaultTranslationId = "web" } = opts;
+
+  if (call.function.name === "search_scripture") {
+    return executeSearchCall(call, fetchImpl, searchUrl);
+  }
   if (call.function.name !== "get_passage") {
     return { text: JSON.stringify({ error: `Unknown tool: ${call.function.name}` }), translationsUsed: [] };
   }
@@ -287,6 +313,37 @@ async function executeToolCall(
     }
   }
   return { text: blocks.join("\n\n———\n\n"), translationsUsed };
+}
+
+/**
+ * Run a search_scripture tool call against the external semantic-search service.
+ * Returns a JSON block of candidate references (pointers only — the model must
+ * still call get_passage to quote). On any failure returns an error the model
+ * can read and recover from (fall back to its own recall + get_passage).
+ */
+async function executeSearchCall(
+  call: ToolCall,
+  fetchImpl: typeof fetch,
+  searchUrl?: string,
+): Promise<ToolCallResult> {
+  if (!searchUrl) {
+    return { text: JSON.stringify({ error: "Semantic search is not available. Use get_passage with a reference you know." }), translationsUsed: [] };
+  }
+  let args: { query?: unknown; testament?: unknown };
+  try {
+    args = JSON.parse(call.function.arguments || "{}");
+  } catch {
+    return { text: JSON.stringify({ error: "Invalid tool arguments JSON." }), translationsUsed: [] };
+  }
+  if (typeof args.query !== "string" || args.query.trim() === "") {
+    return { text: JSON.stringify({ error: "search_scripture requires a non-empty 'query'." }), translationsUsed: [] };
+  }
+  const testament = args.testament === "OT" || args.testament === "NT" ? args.testament : undefined;
+  const result = await searchScripture(args.query, { url: searchUrl, fetchImpl, testament });
+  if ("error" in result) {
+    return { text: JSON.stringify(result), translationsUsed: [] };
+  }
+  return { text: searchResultsToText(args.query, result.results), translationsUsed: [] };
 }
 
 interface StreamTurn {

@@ -231,4 +231,79 @@ describe("runChat tool loop", () => {
       }),
     ).rejects.toThrow(/HTTP 401/);
   });
+
+  it("offers search_scripture only when searchUrl is set", async () => {
+    // Without searchUrl → get_passage only.
+    {
+      const { fetchImpl, bodies } = fetchSequence([sseResponse([contentEvent("Hi."), DONE])]);
+      await runChat([{ role: "user", content: "hi" }], {
+        apiKey: "t",
+        model: "m",
+        fetchImpl,
+        assetFetch: fileAssetFetch(),
+        onToken: () => {},
+      });
+      const names = (await bodies())[0].tools.map((t: any) => t.function.name);
+      expect(names).toEqual(["get_passage"]);
+    }
+    // With searchUrl → search_scripture is added.
+    {
+      const { fetchImpl, bodies } = fetchSequence([sseResponse([contentEvent("Hi."), DONE])]);
+      await runChat([{ role: "user", content: "hi" }], {
+        apiKey: "t",
+        model: "m",
+        fetchImpl,
+        assetFetch: fileAssetFetch(),
+        onToken: () => {},
+        searchUrl: "https://luther.example",
+      });
+      const names = (await bodies())[0].tools.map((t: any) => t.function.name);
+      expect(names).toContain("search_scripture");
+      expect(names).toContain("get_passage");
+    }
+  });
+
+  it("resolves a search_scripture call against the search backend", async () => {
+    const searchTurn = sseResponse([
+      toolEvent(0, { id: "s1", name: "search_scripture", arguments: '{"query":"anxiety"}' }),
+      DONE,
+    ]);
+    const answerTurn = sseResponse([contentEvent("Done."), DONE]);
+    const openrouterResponses = [searchTurn, answerTurn];
+    let orIdx = 0;
+    const bodies: any[] = [];
+    const lutherBody = {
+      results: [
+        { reference_en: "Philippians 4:6", text: "Do not be anxious about anything", score: 0.91, translation: "web" },
+      ],
+    };
+    // Branch by URL: the luther /search endpoint returns JSON; everything else
+    // is an OpenRouter SSE turn.
+    let searchCalled = false;
+    const fetchImpl = (async (url: string, init: any) => {
+      if (String(url).includes("/search?")) {
+        searchCalled = true;
+        return { ok: true, status: 200, json: async () => lutherBody } as any;
+      }
+      bodies.push(JSON.parse(String(init.body)));
+      return openrouterResponses[orIdx++];
+    }) as unknown as typeof fetch;
+
+    await runChat([{ role: "user", content: "anything about anxiety?" }], {
+      apiKey: "t",
+      model: "m",
+      fetchImpl,
+      assetFetch: fileAssetFetch(),
+      onToken: () => {},
+      searchUrl: "https://luther.example",
+    });
+
+    expect(searchCalled).toBe(true);
+    // The tool result fed back to the model names the reference and steers it to
+    // get_passage rather than quoting the snippet.
+    const toolMsg = bodies[1].messages.find((m: any) => m.role === "tool");
+    const content = JSON.stringify(toolMsg.content);
+    expect(content).toContain("Philippians 4:6");
+    expect(content.toLowerCase()).toContain("get_passage");
+  });
 });

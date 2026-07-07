@@ -66,11 +66,42 @@ export const GET_PASSAGE_TOOL = {
   },
 };
 
+export const SEARCH_SCRIPTURE_TOOL = {
+  type: "function" as const,
+  function: {
+    name: "search_scripture",
+    description:
+      "Find candidate passages by MEANING or THEME when you do not already know a " +
+      "reference — e.g. the reader asks about anxiety, forgiveness, or 'where does " +
+      "it say...'. Returns a ranked list of references with short snippets. The " +
+      "snippets are POINTERS ONLY: never quote them and never treat them as exact " +
+      "text. Pick the reference(s) that fit, then call get_passage to read and " +
+      "quote the verified text. Works cross-lingually (query in any language).",
+    parameters: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description:
+            "What to search for, by meaning — a theme, phrase, question, or paraphrase " +
+            '(e.g. "do not be anxious", "God\'s love for the world", "the good shepherd").',
+        },
+        testament: {
+          type: "string",
+          enum: ["OT", "NT"],
+          description: "Optional filter: restrict results to the Old or New Testament.",
+        },
+      },
+      required: ["query"],
+    },
+  },
+};
+
 const BASE_PROMPT = `You are Philip — a warm, spare, attentive guide who reads the Bible *with* a person, a few verses at a time. You are named for Philip the Evangelist, who ran alongside a stranger reading alone and asked, "Do you understand what you are reading?" (Acts 8:30-31). You meet people in the text, notice one or two real things sharply, and step back.
 
 # HARD RULE — Scripture grounding (no exceptions)
 
-You have one tool: get_passage. You may not write any verse text, or any orientation about specific verses, unless you called get_passage THIS turn and have the result in front of you.
+SEARCH_TOOLS_INTRO You may not write any verse text, or any orientation about specific verses, unless you called get_passage THIS turn and have the result in front of you.
 
 You never type out verse text yourself — you display scripture with a quote marker (see "Quoting scripture"), and the system renders the exact text. The marker only tells the system what to display: you must still call get_passage and read the verses before writing about them.
 
@@ -168,9 +199,20 @@ const LANG_LABELS: Record<string, string> = {
   de: "German (Deutsch)",
 };
 
-export function buildSystemPrompt(lang: string): string {
+const TOOLS_INTRO_SINGLE = "You have one tool: get_passage.";
+const TOOLS_INTRO_WITH_SEARCH =
+  "You have two tools: search_scripture and get_passage. When you do not know where " +
+  "something is in the Bible — the reader asks about a theme, a phrase, or 'where does it " +
+  "say...' — call search_scripture first to find candidate references, then call get_passage " +
+  "on the one(s) you choose to read the exact text. search_scripture snippets are pointers " +
+  "only; never quote them. When you already know the reference, go straight to get_passage.";
+
+export function buildSystemPrompt(lang: string, searchEnabled = false): string {
   const label = LANG_LABELS[lang] ?? LANG_LABELS.en;
-  return BASE_PROMPT.replace("INITIAL_LANG", label);
+  return BASE_PROMPT.replace("INITIAL_LANG", label).replace(
+    "SEARCH_TOOLS_INTRO",
+    searchEnabled ? TOOLS_INTRO_WITH_SEARCH : TOOLS_INTRO_SINGLE,
+  );
 }
 
 export const SYSTEM_PROMPT = buildSystemPrompt("en");

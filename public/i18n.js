@@ -33,6 +33,11 @@ export const I18N = {
     verse_copied: "Copied to clipboard",
     theme_to_dark: "Switch to dark mode",
     theme_to_light: "Switch to light mode",
+    search_status: {
+      ready: "Verse search: ready",
+      warming: "Verse search: warming up…",
+      error: "Verse search: unavailable",
+    },
     about: {
       link: "about",
       title: "About Philip",
@@ -98,6 +103,11 @@ export const I18N = {
     verse_copied: "Copiado al portapapeles",
     theme_to_dark: "Cambiar a modo oscuro",
     theme_to_light: "Cambiar a modo claro",
+    search_status: {
+      ready: "Búsqueda de versículos: lista",
+      warming: "Búsqueda de versículos: preparándose…",
+      error: "Búsqueda de versículos: no disponible",
+    },
     about: {
       link: "acerca de",
       title: "Acerca de Felipe",
@@ -163,6 +173,11 @@ export const I18N = {
     verse_copied: "In die Zwischenablage kopiert",
     theme_to_dark: "Zum dunklen Modus wechseln",
     theme_to_light: "Zum hellen Modus wechseln",
+    search_status: {
+      ready: "Verssuche: bereit",
+      warming: "Verssuche: wird aufgewärmt…",
+      error: "Verssuche: nicht verfügbar",
+    },
     about: {
       link: "über",
       title: "Über Philipp",

@@ -14,6 +14,7 @@ import {
 import { createState, addMessage, toHistory } from "../state.js";
 import { streamChat } from "../chat-client.js";
 import { summarizeConversation } from "../summary-client.js";
+import { fetchSearchStatus } from "../status-client.js";
 import {
   addRecord,
   applySummary,
@@ -52,6 +53,13 @@ export function App() {
     document.documentElement.dataset.theme === "dark" ? "dark" : "light",
   );
   const [shareFlash, setShareFlash] = useState(null);
+
+  // Semantic-search availability, shown as a header indicator. Starts "warming"
+  // (we probe the backend on load); search_scripture is only enabled for a chat
+  // turn once this reaches "ready".
+  const [searchStatus, setSearchStatus] = useState("warming");
+  const [searchDetail, setSearchDetail] = useState("");
+  const searchReady = searchStatus === "ready";
 
   // The in-progress streaming turn (null when idle). Kept in a ref for cheap
   // per-token mutation; `setDraft` snapshots it to trigger a render.
@@ -293,6 +301,7 @@ export function App() {
       lang: turnLang,
       lastRequestAt: store.current.lastRequestAt || undefined,
       condensedSummary: store.current.condensedSummary || undefined,
+      searchReady,
       onLang: (nl) => switchLang(nl),
       onToken: (token) => {
         finalizeRead();
@@ -409,6 +418,33 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // --- Warm up the semantic-search backend and poll until it's ready --------
+  // The first probe wakes a sleeping service; we keep polling while it's
+  // "warming" (bounded), so the header indicator flips green as soon as it's
+  // fast, and search_scripture only turns on then.
+  useEffect(() => {
+    let cancelled = false;
+    let timer = null;
+    const MAX_TRIES = 8;
+    const INTERVAL_MS = 3000;
+
+    const poll = async (attempt) => {
+      const { status, detail } = await fetchSearchStatus();
+      if (cancelled) return;
+      setSearchStatus(status);
+      setSearchDetail(detail);
+      if (status === "warming" && attempt + 1 < MAX_TRIES) {
+        timer = setTimeout(() => poll(attempt + 1), INTERVAL_MS);
+      }
+    };
+    poll(0);
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
+
   // Keep the document title and <html lang> in step with the UI language.
   useEffect(() => {
     document.title = t.title;
@@ -488,6 +524,8 @@ export function App() {
       onAbout=${() => setAboutOpen(true)}
       theme=${theme}
       onToggleTheme=${() => setTheme(theme === "dark" ? "light" : "dark")}
+      searchStatus=${searchStatus}
+      searchTooltip=${`${t.search_status[searchStatus]}${searchDetail ? ` — ${searchDetail}` : ""}`}
     />
 
     <main id="log" class="log" aria-live="polite" ref=${logRef}>

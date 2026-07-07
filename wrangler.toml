@@ -6,6 +6,8 @@ pages_build_output_dir = "public"
 #   OPENROUTER_API_KEY   required
 #   OPENROUTER_MODEL     optional (defaults to ~anthropic/claude-sonnet-latest)
 #   CONDENSE_MODEL       optional (defaults to ~anthropic/claude-haiku-latest)
+#   LUTHER_SEARCH_URL    optional semantic-search backend (luther-mcp). Unset →
+#                        hosted Space default; set to "off"/"" to disable.
 
 [[d1_databases]]
 binding = "DB"

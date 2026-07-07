@@ -51,6 +51,7 @@ OPENROUTER_MODEL=~anthropic/claude-sonnet-latest  # optional; any tool-calling m
 CONDENSE_MODEL=~anthropic/claude-haiku-latest     # optional; cheap model for conversation condensation
 MAX_MESSAGES_PER_CONVERSATION=200          # optional; per-conversation user-message cap
 MAX_MESSAGES_PER_IP_PER_DAY=300            # optional; per-IP daily request cap
+LUTHER_SEARCH_URL=https://aifreund-luther-bible.hf.space  # optional; semantic-search backend
 ```
 
 > The chat model **must support tool calling** (Philip uses a `get_passage` tool).
@@ -74,6 +75,32 @@ losing context.
 The condense model does not need tool-calling support — it performs a single
 non-streaming summarization call. Override it with any inexpensive model on
 OpenRouter.
+
+## Semantic verse search (optional)
+
+Philip can find passages by **theme** (not just by reference) via
+[luther-mcp](https://github.com/happyherp/luther-mcp)'s `GET /search` endpoint.
+When enabled, Philip is given a second tool, `search_scripture`, which returns
+candidate **references**; Philip then grounds the exact text through the usual
+`get_passage` against the bundled JSON — luther's own text is never shown, so the
+exact-text and licensing guarantees are unchanged.
+
+| Env var | Default | Purpose |
+| --- | --- | --- |
+| `LUTHER_SEARCH_URL` | hosted Space (`https://aifreund-luther-bible.hf.space`) | Semantic-search backend. Set to `off` or empty to disable. |
+
+Because the hosted (free) Space sleeps after inactivity and its first request
+after waking can take ~15s, the tool is only enabled once the browser has
+confirmed the service is warm:
+
+1. On load the browser polls `GET /api/search/status`, which probes the backend
+   (this also *warms* it) and returns `ready` / `warming` / `error`.
+2. A small header indicator shows that state (green / yellow / red; hover for
+   detail).
+3. Only when the poll reports `ready` does the browser send `searchReady: true`
+   with its `/api/chat` request, and only then does the server offer the
+   `search_scripture` tool. Otherwise Philip runs with `get_passage` alone and
+   the system prompt reflects that.
 
 ## Abuse protection (usage caps)
 
