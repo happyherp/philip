@@ -5,7 +5,7 @@
 import { type AssetFetch } from "./bible.ts";
 import { condenseHistory, estimateTokens, shouldCondense } from "./condense.ts";
 import type { ConversationMessage } from "./messages.ts";
-import { runChat } from "./openrouter.ts";
+import { InsufficientCreditsError, runChat } from "./openrouter.ts";
 import { buildSystemPrompt } from "./philip.ts";
 import { translationById, translationForLang } from "./translations.ts";
 import { sanitizeHistory } from "./messages.ts";
@@ -143,7 +143,15 @@ export function streamChatResponse(opts: StreamChatOptions): StreamChatResult {
       });
       await send({ done: true });
     } catch (err) {
-      await send({ error: err instanceof Error ? err.message : String(err) });
+      if (err instanceof InsufficientCreditsError) {
+        await send({
+          error: "insufficient_credits",
+          code: "insufficient_credits",
+          refillUrl: err.refillUrl,
+        });
+      } else {
+        await send({ error: err instanceof Error ? err.message : String(err) });
+      }
     } finally {
       await writer.close();
     }

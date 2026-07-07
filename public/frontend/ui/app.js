@@ -326,7 +326,7 @@ export function App() {
         store.current.condensedUpToIndex = fullIndex;
       },
       onError: (message, info) => {
-        failure = { message, code: info?.code };
+        failure = { message, code: info?.code, refillUrl: info?.refillUrl };
       },
     });
 
@@ -343,7 +343,15 @@ export function App() {
     if (failure) {
       console.error("[philip]", failure.message);
       // Keep an ephemeral error bubble; it isn't persisted or resent.
-      draftRef.current = { reads: [], pendingRead: null, content: null, thinking: false, error: failure.message };
+      draftRef.current = {
+        reads: [],
+        pendingRead: null,
+        content: null,
+        thinking: false,
+        error: failure.message,
+        errorCode: failure.code,
+        errorRefillUrl: failure.refillUrl,
+      };
       pushDraft();
     } else {
       if (hasContent) addMessage(store.current, "assistant", contentStr);

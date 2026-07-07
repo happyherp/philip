@@ -15,8 +15,8 @@ export function sseResponse(chunks, status = 200) {
 export function tokenEvent(text) {
   return `data: ${JSON.stringify({ token: text })}\n\n`;
 }
-export function errorEvent(message) {
-  return `data: ${JSON.stringify({ error: message })}\n\n`;
+export function errorEvent(message, extra = {}) {
+  return `data: ${JSON.stringify({ error: message, ...extra })}\n\n`;
 }
 export function statusEvent(status) {
   return `data: ${JSON.stringify({ status })}\n\n`;
