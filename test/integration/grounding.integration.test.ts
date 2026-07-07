@@ -2,11 +2,13 @@ import { describe, it, expect } from "vitest";
 import { runChat } from "../../src/openrouter.ts";
 import { getPassage } from "../../src/bible.ts";
 import { fileAssetFetch } from "../helpers.ts";
+import { getTestAttribution } from "../attribution.ts";
 
 // The key correctness guarantee: when Philip quotes scripture, it is the EXACT
 // bundled WEB text obtained via the get_passage tool — never hallucinated.
 const ENABLED = process.env.RUN_INTEGRATION === "1" && !!process.env.OPENROUTER_API_KEY;
 const MODEL = process.env.OPENROUTER_MODEL || "~anthropic/claude-sonnet-latest";
+const attribution = getTestAttribution();
 
 describe.skipIf(!ENABLED)("grounding (live)", () => {
   it("calls get_passage and the tool result contains exact WEB text", async () => {
@@ -34,6 +36,7 @@ describe.skipIf(!ENABLED)("grounding (live)", () => {
       {
         apiKey: process.env.OPENROUTER_API_KEY!,
         model: MODEL,
+        ...attribution,
         assetFetch: assetsSpy,
         onToken: (t) => {
           answer += t;

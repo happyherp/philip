@@ -120,6 +120,7 @@ export interface CondenseDeps {
   model: string;
   fetchImpl?: typeof fetch;
   referer?: string;
+  title?: string;
   lang?: string;
 }
 
@@ -150,6 +151,7 @@ export async function condenseHistory(
     "Content-Type": "application/json",
   };
   if (deps.referer) headers["HTTP-Referer"] = deps.referer;
+  if (deps.title) headers["X-Title"] = deps.title;
 
   const abort = new AbortController();
   const timer = setTimeout(

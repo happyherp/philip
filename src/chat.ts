@@ -95,6 +95,7 @@ export function streamChatResponse(opts: StreamChatOptions): StreamChatResult {
             model: condenseModel,
             fetchImpl: opts.fetchImpl,
             referer: opts.referer,
+            title: opts.title,
             lang,
           });
           // Tell the client to store the new summary. upToIndex covers all
