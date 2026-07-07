@@ -5,7 +5,7 @@
 //
 // Content comes from the i18n `about` block plus the generated translation list,
 // so it stays in step with both the UI language and the actual bundled Bibles.
-import { html, useState, useEffect } from "../vendor/preact.standalone.js";
+import { html, useState, useEffect, useRef } from "../vendor/preact.standalone.js";
 import { TRANSLATIONS } from "../bible-data.gen.js";
 
 const GITHUB_URL = "https://github.com/happyherp/philip";
@@ -64,15 +64,23 @@ function ModelLine({ a }) {
 export function AboutOverlay({ open, t, onClose }) {
   const a = t.about;
 
-  // Close on Escape while open.
+  // Close on Escape while open. The listener is attached once on mount and
+  // reads the latest `open`/`onClose` through refs, rather than being (re)wired
+  // in an `open`-gated effect. That effect runs a tick after the overlay
+  // becomes visible, leaving a brief window where an Escape pressed right after
+  // opening is missed — harmless for a human, but a reliable flake for a fast
+  // test. A mount-time listener has no such window.
+  const openRef = useRef(open);
+  openRef.current = open;
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   useEffect(() => {
-    if (!open) return;
     const onKey = (e) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape" && openRef.current) onCloseRef.current();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  }, []);
 
   const readers = TRANSLATIONS.filter((x) => !x.scholarly);
   const scholarly = TRANSLATIONS.filter((x) => x.scholarly);
