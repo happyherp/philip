@@ -24,16 +24,16 @@
         fill="url(#page)" stroke="#1c2340" stroke-width="2.6"
         stroke-linejoin="round" stroke-linecap="round"/>
 
-  <!-- text lines: kept in the upper-middle of each page, clear of the top,
-       fore edge and the bottom curve so they never cross the outline -->
+  <!-- text lines: deep arcs that lift toward the centre gutter, echoing the
+       fanned pages, kept clear of the top, fore edge and bottom curve -->
   <g fill="none" stroke="#c2a068" stroke-width="2.2" stroke-linecap="round">
-    <path d="M20 41 Q38 38 55 42"/>
-    <path d="M19 47.5 Q38 44.5 55 48"/>
-    <path d="M18.5 54 Q37 51 55 54.5"/>
-    <path d="M18 60 Q37 57 55 60.5"/>
-    <path d="M65 42 Q82 38 100 41"/>
-    <path d="M65 48 Q82 44.5 101 47.5"/>
-    <path d="M65 54.5 Q83 51 101.5 54"/>
-    <path d="M65 60.5 Q83 57 102 60"/>
+    <path d="M20 42 Q37 33 56 38"/>
+    <path d="M19 48 Q37 39 56 44"/>
+    <path d="M18 54 Q37 45 56 50"/>
+    <path d="M18 60 Q36 51 56 56"/>
+    <path d="M64 38 Q83 33 100 42"/>
+    <path d="M64 44 Q83 39 101 48"/>
+    <path d="M64 50 Q83 45 102 54"/>
+    <path d="M64 56 Q84 51 102 60"/>
   </g>
 </svg>
