@@ -307,6 +307,35 @@ describe("runChat tool loop", () => {
     expect(content.toLowerCase()).toContain("get_passage");
   });
 
+  it("reports the search query before running the search", async () => {
+    const searchTurn = sseResponse([
+      toolEvent(0, { id: "s1", name: "search_scripture", arguments: '{"query":"peace of mind"}' }),
+      DONE,
+    ]);
+    const answerTurn = sseResponse([contentEvent("Done."), DONE]);
+    const openrouterResponses = [searchTurn, answerTurn];
+    let orIdx = 0;
+    const searches: Array<{ query: string }> = [];
+    const fetchImpl = (async (url: string) => {
+      if (String(url).includes("/search?")) return { ok: true, status: 200, json: async () => ({ results: [] }) } as any;
+      return openrouterResponses[orIdx++];
+    }) as unknown as typeof fetch;
+
+    await runChat([{ role: "user", content: "help me" }], {
+      apiKey: "t",
+      model: "m",
+      fetchImpl,
+      assetFetch: fileAssetFetch(),
+      onToken: () => {},
+      searchUrl: "https://luther.example",
+      onSearchRequest: (info) => {
+        searches.push(info);
+      },
+    });
+
+    expect(searches).toEqual([{ query: "peace of mind" }]);
+  });
+
   it("throws InsufficientCreditsError with the refill URL on HTTP 402", async () => {
     const body = JSON.stringify({
       error: {

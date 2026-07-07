@@ -52,6 +52,19 @@ export function ReadNote({ reference, translation, reading, t }) {
   return html`<div class="read-note">${text}</div>`;
 }
 
+/** A "Searching for …" / "Searched for …" note for a semantic search Philip ran. */
+export function SearchNote({ query, searching, t }) {
+  const text = (searching ? t.searching : t.searched).replace("{query}", query);
+  return html`<div class="read-note">${text}</div>`;
+}
+
+/** Render one turn "activity" note — either a passage read or a semantic search. */
+function ActivityNote({ item, live, t }) {
+  return item.kind === "search"
+    ? html`<${SearchNote} query=${item.query} searching=${live} t=${t} />`
+    : html`<${ReadNote} reference=${item.reference} translation=${item.translation} reading=${live} t=${t} />`;
+}
+
 /** A committed user/assistant bubble. */
 function Bubble({ role, content, lang }) {
   return html`
@@ -69,12 +82,8 @@ function Bubble({ role, content, lang }) {
 function ActiveTurn({ draft, lang, t }) {
   const cls = "msg-body" + (draft.thinking ? " thinking" : "");
   return html`
-    ${draft.reads.map(
-      (r, i) =>
-        html`<${ReadNote} key=${"r" + i} reference=${r.reference} translation=${r.translation} reading=${false} t=${t} />`,
-    )}
-    ${draft.pendingRead &&
-    html`<${ReadNote} reference=${draft.pendingRead.reference} translation=${draft.pendingRead.translation} reading=${true} t=${t} />`}
+    ${draft.activity.map((item, i) => html`<${ActivityNote} key=${"a" + i} item=${item} live=${false} t=${t} />`)}
+    ${draft.pending && html`<${ActivityNote} item=${draft.pending} live=${true} t=${t} />`}
     <div class="msg msg-assistant">
       ${draft.error
         ? html`<div class=${cls}><${ErrorBody} draft=${draft} t=${t} /></div>`
@@ -90,7 +99,9 @@ export function MessageList({ msgs, draft, lang, t }) {
     ${msgs.map((m, i) =>
       m.role === "read"
         ? html`<${ReadNote} key=${i} reference=${m.reference} translation=${m.translation} reading=${false} t=${t} />`
-        : html`<${Bubble} key=${i} role=${m.role} content=${m.content} lang=${lang} />`,
+        : m.role === "search"
+          ? html`<${SearchNote} key=${i} query=${m.query} searching=${false} t=${t} />`
+          : html`<${Bubble} key=${i} role=${m.role} content=${m.content} lang=${lang} />`,
     )}
     ${draft && html`<${ActiveTurn} draft=${draft} lang=${lang} t=${t} />`}
   `;

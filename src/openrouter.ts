@@ -115,6 +115,11 @@ export interface RunChatDeps {
    * can show progress (e.g. "Reading John 3 in WEB") instead of an empty wait.
    */
   onPassageRequest?: (info: { reference: string; translationId: string }) => void | Promise<void>;
+  /**
+   * Called when the model runs a semantic search, *before* results return, so
+   * the UI can show progress (e.g. "Searching for 'anxiety'") instead of a wait.
+   */
+  onSearchRequest?: (info: { query: string }) => void | Promise<void>;
 }
 
 export interface RunChatResult {
@@ -208,6 +213,10 @@ export async function runChat(history: ChatMessage[], deps: RunChatDeps): Promis
             await deps.onPassageRequest(info);
           }
         }
+        if (deps.onSearchRequest) {
+          const query = describeSearchCall(call);
+          if (query != null) await deps.onSearchRequest({ query });
+        }
         const { text, translationsUsed } = await executeToolCall(call, {
           assetFetch: deps.assetFetch,
           fetchImpl,
@@ -283,6 +292,21 @@ function describePassageCalls(
       translationId: req.translation || defaultTranslationId,
     };
   });
+}
+
+/**
+ * Extract the query from a search_scripture tool call for a progress message.
+ * Returns null for anything that isn't a parseable search (the model will get an
+ * error result and self-correct, so there's nothing useful to show).
+ */
+function describeSearchCall(call: ToolCall): string | null {
+  if (call.function.name !== "search_scripture") return null;
+  try {
+    const args = JSON.parse(call.function.arguments || "{}");
+    return typeof args.query === "string" && args.query.trim() !== "" ? args.query : null;
+  } catch {
+    return null;
+  }
 }
 
 interface ToolCallResult {

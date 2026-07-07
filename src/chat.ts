@@ -147,6 +147,11 @@ export function streamChatResponse(opts: StreamChatOptions): StreamChatResult {
           const meta = translationById(translationId);
           send({ status: { type: "reading", reference, translation: meta?.name ?? translationId } });
         },
+        onSearchRequest: ({ query }) => {
+          // Tell the browser what Philip is searching for, so it can show
+          // progress during the (possibly slow) semantic-search call.
+          send({ status: { type: "searching", query } });
+        },
       });
       await send({ done: true });
     } catch (err) {
