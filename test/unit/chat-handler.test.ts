@@ -152,4 +152,26 @@ describe("streamChatResponse", () => {
     expect(body).toContain('"error"');
     expect(body).toContain("HTTP 500");
   });
+
+  it("emits a structured insufficient_credits error with a refill URL on HTTP 402", async () => {
+    const upstreamBody = JSON.stringify({
+      error: {
+        message:
+          "This request requires more credits. To increase, visit " +
+          "https://openrouter.ai/workspaces/default/keys/abc123 and adjust the key's total limit",
+      },
+    });
+    const { fetchImpl } = fetchSequence([new Response(upstreamBody, { status: 402 })]);
+    const { response, pump } = streamChatResponse({
+      history: [{ role: "user", content: "hi" }],
+      apiKey: "test",
+      model: "test/model",
+      fetchImpl,
+      assetFetch: fileAssetFetch(),
+    });
+    const body = await readSSE(response);
+    await pump;
+    expect(body).toContain('"code":"insufficient_credits"');
+    expect(body).toContain('"refillUrl":"https://openrouter.ai/workspaces/default/keys/abc123"');
+  });
 });

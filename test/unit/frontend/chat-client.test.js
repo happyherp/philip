@@ -61,6 +61,30 @@ describe("streamChat", () => {
     expect(onDone).not.toHaveBeenCalled();
   });
 
+  it("surfaces the code and refillUrl on a structured server error event", async () => {
+    const fetchImpl = vi.fn(async () =>
+      sseResponse([
+        errorEvent("insufficient_credits", {
+          code: "insufficient_credits",
+          refillUrl: "https://openrouter.ai/workspaces/default/keys/abc123",
+        }),
+      ]),
+    );
+    const onError = vi.fn();
+
+    await streamChat({
+      messages: [{ role: "user", content: "hi" }],
+      onToken: () => {},
+      onError,
+      fetchImpl,
+    });
+
+    expect(onError).toHaveBeenCalledWith("insufficient_credits", {
+      code: "insufficient_credits",
+      refillUrl: "https://openrouter.ai/workspaces/default/keys/abc123",
+    });
+  });
+
   it("handles a non-OK response", async () => {
     const fetchImpl = vi.fn(async () => new Response("nope", { status: 500 }));
     const onError = vi.fn();
