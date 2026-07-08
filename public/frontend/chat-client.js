@@ -16,6 +16,7 @@
  * @param {(message: string, info?: {status?: number, code?: string, refillUrl?: string}) => void} [opts.onError]
  * @param {number} [opts.lastRequestAt] - unix-ms timestamp of the previous chat request
  * @param {string} [opts.condensedSummary] - existing condensed summary from a prior round
+ * @param {boolean} [opts.searchReady] - whether semantic search is confirmed warm (enables the search_scripture tool)
  * @param {typeof fetch} [opts.fetchImpl]
  * @param {string} [opts.url]
  */
@@ -30,12 +31,14 @@ export async function streamChat({
   onError,
   lastRequestAt,
   condensedSummary,
+  searchReady,
   fetchImpl = fetch,
   url = "/api/chat",
 }) {
   const body = { messages, lang };
   if (lastRequestAt) body.lastRequestAt = lastRequestAt;
   if (condensedSummary) body.condensedSummary = condensedSummary;
+  if (searchReady) body.searchReady = true;
 
   let res;
   try {

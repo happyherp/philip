@@ -12,6 +12,7 @@
 import { streamChatResponse, sanitizeHistory } from "../../src/chat.ts";
 import { DEFAULT_LIMITS, recordIpUsage } from "../../src/rate-limit.ts";
 import { clientIp, json, parsePositiveInt, resolveLang } from "../../src/http.ts";
+import { resolveSearchUrl } from "../../src/search.ts";
 
 interface Env {
   ASSETS: Fetcher;
@@ -23,6 +24,8 @@ interface Env {
   CONDENSE_MODEL?: string;
   CONDENSE_TOKEN_THRESHOLD?: string;
   CONDENSE_CACHE_TTL_SECONDS?: string;
+  /** Semantic-search backend (luther-mcp). Unset → hosted default; "off"/"" → disabled. */
+  LUTHER_SEARCH_URL?: string;
 }
 
 const DEFAULT_MODEL = "~anthropic/claude-sonnet-latest";
@@ -111,6 +114,12 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       ? body.condensedSummary
       : undefined;
 
+  // Semantic search is enabled for this turn only when a backend is configured
+  // AND the client confirmed (via its warm-up poll) that it is warm and fast.
+  // Otherwise Philip runs with get_passage alone and the prompt says so.
+  const configuredSearchUrl = resolveSearchUrl(env.LUTHER_SEARCH_URL);
+  const searchUrl = configuredSearchUrl && body.searchReady === true ? configuredSearchUrl : undefined;
+
   const { response, pump } = streamChatResponse({
     history,
     apiKey: env.OPENROUTER_API_KEY,
@@ -124,6 +133,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     condenseCacheTtlMs: condenseCacheTtlSeconds * 1000,
     lastRequestAt,
     condensedSummary,
+    searchUrl,
   });
 
   context.waitUntil(

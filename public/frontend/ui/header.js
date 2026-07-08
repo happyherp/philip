@@ -71,6 +71,8 @@ export function Topbar({
   onAbout,
   theme,
   onToggleTheme,
+  searchStatus,
+  searchTooltip,
 }) {
   const dark = theme === "dark";
   return html`
@@ -112,6 +114,16 @@ export function Topbar({
         role="button"
         onClick=${onToggleTheme}
       />
+      ${searchStatus &&
+      html`<span
+        id="search-status"
+        class="chip chip-status"
+        data-status=${searchStatus}
+        title=${searchTooltip}
+        role="img"
+        aria-label=${searchTooltip}
+        >●</span
+      >`}
       <p class="tagline">${t.tagline}</p>
       <${SavedDropdown}
         open=${savedOpen}

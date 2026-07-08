@@ -14,6 +14,9 @@
   --danger: #9a3b2e;
   --shadow: rgba(0, 0, 0, 0.15);
   --max: 720px;
+  --status-ready: #3f8f5f;
+  --status-warming: #b8862b;
+  --status-error: #9a3b2e;
 }
 
 /* Dark theme: same warm character as the light palette, just inverted. The
@@ -34,6 +37,9 @@
   --code-bg: #2d2a24;
   --danger: #e08a76;
   --shadow: rgba(0, 0, 0, 0.5);
+  --status-ready: #6fbf8a;
+  --status-warming: #d9a441;
+  --status-error: #e08a76;
 }
 
 html {
@@ -106,6 +112,44 @@ body {
   opacity: 0.4;
   cursor: default;
   pointer-events: none;
+}
+/* Semantic-search availability: a colored dot; hover (native title) shows detail.
+   The state color must survive the generic .chip:hover recolor, so these rules
+   come after it and match its specificity. */
+.topbar .chip-status {
+  cursor: help;
+  padding: 1px 4px;
+  line-height: 1;
+}
+.topbar .chip-status[data-status="ready"],
+.topbar .chip-status[data-status="ready"]:hover {
+  color: var(--status-ready);
+  border-color: var(--status-ready);
+}
+.topbar .chip-status[data-status="warming"],
+.topbar .chip-status[data-status="warming"]:hover {
+  color: var(--status-warming);
+  border-color: var(--status-warming);
+  animation: status-pulse 1.4s ease-in-out infinite;
+}
+.topbar .chip-status[data-status="error"],
+.topbar .chip-status[data-status="error"]:hover {
+  color: var(--status-error);
+  border-color: var(--status-error);
+}
+@keyframes status-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .topbar .chip-status[data-status="warming"] {
+    animation: none;
+  }
 }
 .tagline {
   margin: 2px 0 0;

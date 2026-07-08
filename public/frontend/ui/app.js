@@ -14,6 +14,7 @@ import {
 import { createState, addMessage, toHistory } from "../state.js";
 import { streamChat } from "../chat-client.js";
 import { summarizeConversation } from "../summary-client.js";
+import { fetchSearchStatus } from "../status-client.js";
 import {
   addRecord,
   applySummary,
@@ -52,6 +53,13 @@ export function App() {
     document.documentElement.dataset.theme === "dark" ? "dark" : "light",
   );
   const [shareFlash, setShareFlash] = useState(null);
+
+  // Semantic-search availability, shown as a header indicator. Starts "warming"
+  // (we probe the backend on load); search_scripture is only enabled for a chat
+  // turn once this reaches "ready".
+  const [searchStatus, setSearchStatus] = useState("warming");
+  const [searchDetail, setSearchDetail] = useState("");
+  const searchReady = searchStatus === "ready";
 
   // The in-progress streaming turn (null when idle). Kept in a ref for cheap
   // per-token mutation; `setDraft` snapshots it to trigger a render.
@@ -110,7 +118,9 @@ export function App() {
     store.current.messages = messages.map((m) =>
       m.role === "read"
         ? { role: "read", reference: m.reference, translation: m.translation }
-        : { role: m.role, content: m.content },
+        : m.role === "search"
+          ? { role: "search", query: m.query }
+          : { role: m.role, content: m.content },
     );
     commit();
   }
@@ -258,7 +268,7 @@ export function App() {
     const outgoing = toHistory(store.current);
     const turnLang = lang;
 
-    draftRef.current = { reads: [], pendingRead: null, content: null, thinking: true, error: null };
+    draftRef.current = { activity: [], pending: null, content: null, thinking: true, error: null };
     pushDraft();
 
     // Anchor this turn near the top and reserve a screen of space below, so the
@@ -281,10 +291,13 @@ export function App() {
     const schedule = () => {
       if (!frame) frame = requestAnimationFrame(flush);
     };
-    const finalizeRead = () => {
-      if (!draftRef.current.pendingRead) return;
-      draftRef.current.reads.push(draftRef.current.pendingRead);
-      draftRef.current.pendingRead = null;
+    // Reads and searches are both "activity" shown above the reply while it
+    // streams; finalizing moves the in-flight one into the ordered list so the
+    // next activity (or the answer) can take its place.
+    const finalizePending = () => {
+      if (!draftRef.current.pending) return;
+      draftRef.current.activity.push(draftRef.current.pending);
+      draftRef.current.pending = null;
     };
 
     let failure = null;
@@ -293,22 +306,29 @@ export function App() {
       lang: turnLang,
       lastRequestAt: store.current.lastRequestAt || undefined,
       condensedSummary: store.current.condensedSummary || undefined,
+      searchReady,
       onLang: (nl) => switchLang(nl),
       onToken: (token) => {
-        finalizeRead();
+        finalizePending();
         draftRef.current.thinking = false;
         hasContent = true;
         contentStr += token;
         schedule();
       },
       onStatus: (status) => {
-        if (status?.type !== "reading") return;
-        finalizeRead();
-        draftRef.current.pendingRead = {
-          reference: status.reference ?? "",
-          translation: status.translation ?? "",
-        };
-        pushDraft();
+        if (status?.type === "reading") {
+          finalizePending();
+          draftRef.current.pending = {
+            kind: "read",
+            reference: status.reference ?? "",
+            translation: status.translation ?? "",
+          };
+          pushDraft();
+        } else if (status?.type === "searching") {
+          finalizePending();
+          draftRef.current.pending = { kind: "search", query: status.query ?? "" };
+          pushDraft();
+        }
       },
       onCondensed: ({ summary, upToIndex }) => {
         store.current.condensedSummary = summary;
@@ -331,21 +351,22 @@ export function App() {
     });
 
     store.current.lastRequestAt = Date.now();
-    finalizeRead();
+    finalizePending();
     if (frame) cancelAnimationFrame(frame);
 
-    // Fold the turn into the persisted store: the read notes always, the
+    // Fold the turn into the persisted store: the read/search notes always, the
     // assistant reply only if it produced text and didn't fail.
-    for (const r of draftRef.current.reads) {
-      store.current.messages.push({ role: "read", reference: r.reference, translation: r.translation });
+    for (const a of draftRef.current.activity) {
+      if (a.kind === "search") store.current.messages.push({ role: "search", query: a.query });
+      else store.current.messages.push({ role: "read", reference: a.reference, translation: a.translation });
     }
 
     if (failure) {
       console.error("[philip]", failure.message);
       // Keep an ephemeral error bubble; it isn't persisted or resent.
       draftRef.current = {
-        reads: [],
-        pendingRead: null,
+        activity: [],
+        pending: null,
         content: null,
         thinking: false,
         error: failure.message,
@@ -415,6 +436,33 @@ export function App() {
 
     inputRef.current?.focus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // --- Warm up the semantic-search backend and poll until it's ready --------
+  // The first probe wakes a sleeping service; we keep polling while it's
+  // "warming" (bounded), so the header indicator flips green as soon as it's
+  // fast, and search_scripture only turns on then.
+  useEffect(() => {
+    let cancelled = false;
+    let timer = null;
+    const MAX_TRIES = 8;
+    const INTERVAL_MS = 3000;
+
+    const poll = async (attempt) => {
+      const { status, detail } = await fetchSearchStatus();
+      if (cancelled) return;
+      setSearchStatus(status);
+      setSearchDetail(detail);
+      if (status === "warming" && attempt + 1 < MAX_TRIES) {
+        timer = setTimeout(() => poll(attempt + 1), INTERVAL_MS);
+      }
+    };
+    poll(0);
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
   }, []);
 
   // Keep the document title and <html lang> in step with the UI language.
@@ -496,6 +544,8 @@ export function App() {
       onAbout=${() => setAboutOpen(true)}
       theme=${theme}
       onToggleTheme=${() => setTheme(theme === "dark" ? "light" : "dark")}
+      searchStatus=${searchStatus}
+      searchTooltip=${`${t.search_status[searchStatus]}${searchDetail ? ` — ${searchDetail}` : ""}`}
     />
 
     <main id="log" class="log" aria-live="polite" ref=${logRef}>

@@ -35,6 +35,12 @@ export interface StreamChatOptions {
   lastRequestAt?: number;
   /** Existing condensed summary from a previous condensation round (sent by the client). */
   condensedSummary?: string;
+  /**
+   * Base URL of the semantic-search service. When set, Philip is given the
+   * search_scripture tool and the system prompt describes it. The Pages Function
+   * sets this only when search is configured AND the client confirmed it is warm.
+   */
+  searchUrl?: string;
 }
 
 /** Result of {@link streamChatResponse}: the SSE response plus its pump promise. */
@@ -126,8 +132,9 @@ export function streamChatResponse(opts: StreamChatOptions): StreamChatResult {
         fetchImpl: opts.fetchImpl,
         referer: opts.referer,
         title: opts.title,
-        systemPrompt: buildSystemPrompt(lang),
+        systemPrompt: buildSystemPrompt(lang, Boolean(opts.searchUrl)),
         translationId: translation.id,
+        searchUrl: opts.searchUrl,
         onToken: (t) => send({ token: t }),
         onTranslationUsed: (tid) => {
           const meta = translationById(tid);
@@ -140,6 +147,11 @@ export function streamChatResponse(opts: StreamChatOptions): StreamChatResult {
           // progress instead of an empty bubble during the tool call.
           const meta = translationById(translationId);
           send({ status: { type: "reading", reference, translation: meta?.name ?? translationId } });
+        },
+        onSearchRequest: ({ query }) => {
+          // Tell the browser what Philip is searching for, so it can show
+          // progress during the (possibly slow) semantic-search call.
+          send({ status: { type: "searching", query } });
         },
       });
       await send({ done: true });
