@@ -7,3 +7,4 @@ coverage/
 dev-container/.env
 playwright-report/
 test-results/
+eval/results/

@@ -13,6 +13,8 @@
     "vendor:marked": "tsx scripts/vendor-marked.ts",
     "vendor:preact": "tsx scripts/vendor-preact.ts",
     "dev": "wrangler pages dev public",
+    "eval": "tsx eval/run.ts",
+    "eval:report": "tsx eval/report.ts",
     "deploy": "wrangler pages deploy public",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --project backend --project frontend",
