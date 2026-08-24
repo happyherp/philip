@@ -108,6 +108,17 @@ describe("displayReference / translationForLang", () => {
     expect(displayReference(parseReference("John 8:31"))).toBe("John 8:31");
   });
 
+  it("shows the book name in the requested language", () => {
+    expect(displayReference(parseReference("John 8:31"), "es")).toBe("Juan 8:31");
+    expect(displayReference(parseReference("John 8:31"), "de")).toBe("Johannes 8:31");
+    expect(displayReference(parseReference("Genesis 1:1"), "de")).toBe("1. Mose 1:1");
+  });
+
+  it("falls back to English when the language has no localized name", () => {
+    expect(displayReference(parseReference("John 8:31"), "grc")).toBe("John 8:31");
+    expect(displayReference(parseReference("John 8:31"))).toBe("John 8:31");
+  });
+
   it("maps languages to reader translations, never scholarly ones", () => {
     expect(translationForLang("de").id).toBe("luther1545");
     expect(translationForLang("grc").id).toBe("web"); // scholarly lang has no reader default
@@ -130,6 +141,29 @@ describe("buildQuoteElement", () => {
     expect(el.querySelector(".quote-ref").textContent).toBe("John 8:31–32");
     expect(el.querySelector(".quote-text").textContent).toContain("the truth will make you free");
     expect(el.querySelector(".quote-attrib").textContent).toBe("— WEB");
+  });
+
+  it("shows the book name in the language of the quoted translation", async () => {
+    const genesisLuther = {
+      book: "Genesis",
+      translation: "Luther 1545",
+      chapters: { 1: { 1: "Am Anfang schuf Gott Himmel und Erde." } },
+    };
+    const { impl } = fetchStub({ "/bible/luther1545/genesis.json": genesisLuther });
+    const [marker] = findMarkers("{{quote Genesis 1:1 @luther1545}}");
+    const el = buildQuoteElement(marker, "luther1545", impl);
+    document.body.appendChild(el);
+    await flush();
+    expect(el.querySelector(".quote-ref").textContent).toBe("1. Mose 1:1");
+  });
+
+  it("keeps the English book name for scholarly translations", async () => {
+    const { impl } = fetchStub({ "/bible/wlc/genesis.json": GENESIS_WLC });
+    const [marker] = findMarkers("{{quote Genesis 1:1 @wlc}}");
+    const el = buildQuoteElement(marker, "web", impl);
+    document.body.appendChild(el);
+    await flush();
+    expect(el.querySelector(".quote-ref").textContent).toBe("Genesis 1:1");
   });
 
   it("prefixes each verse with its number on block quotes", async () => {

@@ -60,21 +60,37 @@ export function parseReference(input) {
   return { book, startChapter, startVerse: undefined, endChapter: Number(n2), endVerse: undefined };
 }
 
-/** Canonical display string, with an en-dash for ranges: "John 8:31–32". */
-export function displayReference(ref) {
+/**
+ * The book's display name for a translation's language, e.g. "Mateo" for
+ * `lang: "es"`. Falls back to the canonical English `name` when `lang` is
+ * undefined or the book has no name recorded for it — which scholarly
+ * (research) translations should always pass, so they stay in English.
+ */
+function bookNameFor(book, lang) {
+  if (!lang) return book.name;
+  return book.names?.[lang] ?? book.name;
+}
+
+/**
+ * Canonical display string, with an en-dash for ranges: "John 8:31–32". Pass
+ * `lang` to show the book name in that language (matching the translation
+ * being quoted); omit it to keep the canonical English name.
+ */
+export function displayReference(ref, lang) {
   const { book, startChapter, startVerse, endChapter, endVerse } = ref;
+  const name = bookNameFor(book, lang);
   if (startVerse == null) {
     return endChapter !== startChapter
-      ? `${book.name} ${startChapter}–${endChapter}`
-      : `${book.name} ${startChapter}`;
+      ? `${name} ${startChapter}–${endChapter}`
+      : `${name} ${startChapter}`;
   }
   if (endChapter === startChapter) {
     return endVerse != null && endVerse !== startVerse
-      ? `${book.name} ${startChapter}:${startVerse}–${endVerse}`
-      : `${book.name} ${startChapter}:${startVerse}`;
+      ? `${name} ${startChapter}:${startVerse}–${endVerse}`
+      : `${name} ${startChapter}:${startVerse}`;
   }
   const tail = endVerse != null ? `${endChapter}:${endVerse}` : `${endChapter}`;
-  return `${book.name} ${startChapter}:${startVerse}–${tail}`;
+  return `${name} ${startChapter}:${startVerse}–${tail}`;
 }
 
 // --- Translations ---
@@ -672,7 +688,7 @@ export function buildQuoteElement(marker, defaultTranslationId, fetchImpl) {
     TRANSLATION_BY_ID.get(defaultTranslationId) ||
     TRANSLATIONS[0];
 
-  const refLabel = displayReference(ref);
+  const refLabel = displayReference(ref, meta.scholarly ? undefined : meta.lang);
   if (!translationCovers(meta, ref.book)) {
     return errorSpan(`${refLabel} (${meta.name})`);
   }
