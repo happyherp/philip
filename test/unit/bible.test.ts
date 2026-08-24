@@ -74,6 +74,17 @@ describe("formatReference", () => {
     expect(formatReference(parseReference("Psalm 23")!)).toBe("Psalms 23");
     expect(formatReference(parseReference("John 8:31-9:2")!)).toBe("John 8:31-9:2");
   });
+
+  it("renders the book name in the requested language", () => {
+    expect(formatReference(parseReference("John 8:31")!, "es")).toBe("Juan 8:31");
+    expect(formatReference(parseReference("John 8:31")!, "de")).toBe("Johannes 8:31");
+    expect(formatReference(parseReference("Genesis 1:1")!, "de")).toBe("1. Mose 1:1");
+  });
+
+  it("falls back to English when the language has no localized name", () => {
+    expect(formatReference(parseReference("John 8:31")!, "grc")).toBe("John 8:31");
+    expect(formatReference(parseReference("John 8:31")!)).toBe("John 8:31");
+  });
 });
 
 describe("getPassage (against bundled WEB)", () => {
@@ -171,6 +182,26 @@ describe("getPassage (against bundled WEB)", () => {
     if (!("error" in ntInHebrew)) throw new Error("expected error");
     expect(ntInHebrew.error).toContain("does not contain John");
     expect(ntInHebrew.error).toContain("tisch");
+  });
+
+  it("localizes the book name in the reference to match a reader translation", async () => {
+    const es = await getPassage("Matthew 6:33", assets, "rv1909");
+    if (!("verses" in es)) throw new Error("expected verses");
+    expect(es.reference).toBe("Mateo 6:33");
+
+    const de = await getPassage("Genesis 1:1", assets, "luther1545");
+    if (!("verses" in de)) throw new Error("expected verses");
+    expect(de.reference).toBe("1. Mose 1:1");
+  });
+
+  it("keeps the English book name for scholarly/research translations", async () => {
+    const greek = await getPassage("John 1:1", assets, "tisch");
+    if (!("verses" in greek)) throw new Error("expected verses");
+    expect(greek.reference).toBe("John 1:1");
+
+    const hebrew = await getPassage("Genesis 1:1", assets, "wlc");
+    if (!("verses" in hebrew)) throw new Error("expected verses");
+    expect(hebrew.reference).toBe("Genesis 1:1");
   });
 
   it("renders passage text for the model", async () => {

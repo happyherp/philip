@@ -3,7 +3,7 @@
 // identically in the Cloudflare Worker (env.ASSETS), in Node tests (a stub),
 // and in a future WhatsApp webhook.
 
-import { type BookMeta, buildBookIndex, isOldTestament, normalizeBookKey } from "./books.ts";
+import { type BookMeta, bookNameFor, buildBookIndex, isOldTestament, normalizeBookKey } from "./books.ts";
 import { TRANSLATIONS, translationById, translationCoversBook } from "./translations.ts";
 
 const BOOK_INDEX = buildBookIndex();
@@ -110,20 +110,26 @@ function lookupBook(raw: string): BookMeta | undefined {
   return BOOK_INDEX.get(norm) ?? BOOK_INDEX.get(norm.replace(/ /g, ""));
 }
 
-/** Build the canonical display string for a parsed reference. */
-export function formatReference(ref: ParsedReference): string {
+/**
+ * Build the canonical display string for a parsed reference. `lang` selects
+ * the book name's language (e.g. "es", "de") to match the translation being
+ * quoted; omit it (or pass it for a scholarly translation) to keep the
+ * canonical English name.
+ */
+export function formatReference(ref: ParsedReference, lang?: string): string {
   const { book, startChapter, startVerse, endChapter, endVerse } = ref;
+  const name = bookNameFor(book, lang);
   if (startVerse == null) {
     return endChapter !== startChapter
-      ? `${book.name} ${startChapter}-${endChapter}`
-      : `${book.name} ${startChapter}`;
+      ? `${name} ${startChapter}-${endChapter}`
+      : `${name} ${startChapter}`;
   }
   if (endChapter === startChapter) {
     return endVerse != null && endVerse !== startVerse
-      ? `${book.name} ${startChapter}:${startVerse}-${endVerse}`
-      : `${book.name} ${startChapter}:${startVerse}`;
+      ? `${name} ${startChapter}:${startVerse}-${endVerse}`
+      : `${name} ${startChapter}:${startVerse}`;
   }
-  return `${book.name} ${startChapter}:${startVerse}-${endChapter}:${endVerse ?? ""}`.replace(/:$/, "");
+  return `${name} ${startChapter}:${startVerse}-${endChapter}:${endVerse ?? ""}`.replace(/:$/, "");
 }
 
 /**
@@ -201,7 +207,7 @@ export async function getPassage(
   const contextAfter = allVerses.slice(lastIdx + 1, lastIdx + 1 + CONTEXT_AFTER);
 
   return {
-    reference: formatReference(ref),
+    reference: formatReference(ref, translation.scholarly ? undefined : translation.lang),
     translation: data.translation,
     verses,
     contextBefore,
