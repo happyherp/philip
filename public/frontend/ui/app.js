@@ -14,7 +14,7 @@ import {
 import { createState, addMessage, toHistory } from "../state.js";
 import { streamChat } from "../chat-client.js";
 import { summarizeConversation } from "../summary-client.js";
-import { fetchSearchStatus } from "../status-client.js";
+import { pollSearchStatus } from "../status-client.js";
 import {
   addRecord,
   applySummary,
@@ -441,27 +441,21 @@ export function App() {
   // --- Warm up the semantic-search backend and poll until it's ready --------
   // The first probe wakes a sleeping service; we keep polling while it's
   // "warming" (bounded), so the header indicator flips green as soon as it's
-  // fast, and search_scripture only turns on then.
+  // fast, and search_scripture only turns on then. If it's still "warming"
+  // once tries run out, pollSearchStatus reports "error" instead of leaving
+  // the indicator stuck claiming it's still waking up.
   useEffect(() => {
     let cancelled = false;
-    let timer = null;
-    const MAX_TRIES = 8;
-    const INTERVAL_MS = 3000;
-
-    const poll = async (attempt) => {
-      const { status, detail } = await fetchSearchStatus();
-      if (cancelled) return;
-      setSearchStatus(status);
-      setSearchDetail(detail);
-      if (status === "warming" && attempt + 1 < MAX_TRIES) {
-        timer = setTimeout(() => poll(attempt + 1), INTERVAL_MS);
-      }
-    };
-    poll(0);
+    pollSearchStatus({
+      isCancelled: () => cancelled,
+      onUpdate: (status, detail) => {
+        setSearchStatus(status);
+        setSearchDetail(detail);
+      },
+    });
 
     return () => {
       cancelled = true;
-      if (timer) clearTimeout(timer);
     };
   }, []);
 
