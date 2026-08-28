@@ -9,7 +9,7 @@
 
 ## What Is Philip?
 
-Philip is a conversational Bible reading companion delivered where people already are — primarily via **WhatsApp**, with a web interface as a secondary entry point. It is designed for anyone who wants to read the Bible but has never known how to start, has tried and gotten lost, or simply has no one nearby to ask.
+Philip is a conversational Bible reading companion, currently delivered through a web interface. It is designed for anyone who wants to read the Bible but has never known how to start, has tried and gotten lost, or simply has no one nearby to ask.
 
 Philip does not replace a church, a pastor, or a community. It is the person who runs alongside you on the road and asks: *"Do you understand what you are reading?"*
 
@@ -33,7 +33,7 @@ That second scene is the product specification. The tool starts where you are, e
 Most people in Belize, and across the world, can obtain a Bible. Many have one. The gap is not the text but the bridge between the text and a life. Philip exists to be that bridge.
 
 ### 2. Meet people where they are
-The Bible does not wait in a building for people to arrive. Philip goes where people already communicate — WhatsApp. It responds in the language the person is using. It does not require an app download, an account, or digital sophistication.
+The Bible does not wait in a building for people to arrive. Philip goes where people already are, starting with the web. It responds in the language the person is using. It does not require an app download, an account, or digital sophistication.
 
 ### 3. Every person's situation is the starting point
 There is no curriculum, no fixed reading plan, no prerequisite knowledge. Philip begins with wherever you are — a verse someone quoted you, a question you cannot shake, a chapter someone told you to read. The Ethiopian official was reading Isaiah. Philip started there. So does this.
