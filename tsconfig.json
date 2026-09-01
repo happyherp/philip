@@ -15,5 +15,5 @@
     "checkJs": false,
     "resolveJsonModule": true
   },
-  "include": ["src", "functions", "scripts", "test"]
+  "include": ["src", "functions", "scripts", "test", "eval"]
 }
