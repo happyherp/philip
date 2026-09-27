@@ -440,10 +440,10 @@ export function App() {
 
   // --- Warm up the semantic-search backend and poll until it's ready --------
   // The first probe wakes a sleeping service; we keep polling while it's
-  // "warming" (bounded), so the header indicator flips green as soon as it's
-  // fast, and search_scripture only turns on then. If it's still "warming"
-  // once tries run out, pollSearchStatus reports "error" instead of leaving
-  // the indicator stuck claiming it's still waking up.
+  // "warming" (backoff for ~3 min, then slow background checks), so the
+  // header indicator flips green as soon as it's fast, and search_scripture
+  // turns on then — even mid-session. If it never wakes, pollSearchStatus
+  // eventually reports "error" instead of claiming it's still waking up.
   useEffect(() => {
     let cancelled = false;
     pollSearchStatus({
