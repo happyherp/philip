@@ -94,7 +94,10 @@ after waking can take ~15s, the tool is only enabled once the browser has
 confirmed the service is warm:
 
 1. On load the browser polls `GET /api/search/status`, which probes the backend
-   (this also *warms* it) and returns `ready` / `warming` / `error`.
+   (this also *warms* it) and returns `ready` / `warming` / `error`. While
+   `warming`, it re-polls with backoff (3 s growing to 15 s) for ~3 minutes —
+   a sleeping HuggingFace Space takes ~1–2 minutes to cold start — then keeps
+   checking every 60 s in the background (up to an hour) before giving up.
 2. A small header indicator shows that state (green / yellow / red; hover for
    detail).
 3. Only when the poll reports `ready` does the browser send `searchReady: true`

@@ -27,23 +27,33 @@ export async function fetchSearchStatus({ fetchImpl = fetch, url = "/api/search/
 }
 
 /**
- * Poll GET /api/search/status until it reports "ready" or a hard "error", or
- * until `maxTries` is exhausted. Each hit doubles as a keep-alive/wake nudge
- * to the backend.
+ * Poll GET /api/search/status until it reports "ready" or a hard "error". Each
+ * hit doubles as a keep-alive/wake nudge to the backend.
  *
- * A backend that never wakes up (e.g. a HuggingFace Space stuck crashed
- * rather than merely asleep) reports "warming" on every probe forever, since
- * the server side can't tell a cold-start apart from a wedged service — both
- * surface as a 503. Left unbounded, the caller would show "warming up…" to
- * the reader indefinitely even after this function gives up retrying. So
- * once `maxTries` is exhausted while still "warming", this reports "error"
- * instead, so the UI reflects that it actually stopped trying.
+ * Two phases, because a sleeping HuggingFace Space needs ~1-2+ minutes to cold
+ * start (sometimes a full container rebuild):
+ *
+ * 1. Warm-up: probe with a growing interval (initialIntervalMs, multiplied by
+ *    backoffFactor, capped at maxIntervalMs) until warmupBudgetMs of waiting
+ *    has been spent.
+ * 2. Background: if still "warming", keep the status "warming" (the detail
+ *    says it is being checked in the background) and probe every
+ *    backgroundIntervalMs, so search still switches on later in the session.
+ *
+ * A backend stuck crashed rather than asleep reports "warming" forever (the
+ * server can't tell a cold start from a wedged service — both are a 503). So
+ * once backgroundMaxTries background probes are spent, this reports "error"
+ * instead of claiming "warming up" indefinitely.
  *
  * @param {object} [opts]
  * @param {typeof fetch} [opts.fetchImpl]
  * @param {string} [opts.url]
- * @param {number} [opts.maxTries]
- * @param {number} [opts.intervalMs] - delay between attempts
+ * @param {number} [opts.initialIntervalMs] - first delay between warm-up attempts
+ * @param {number} [opts.backoffFactor] - warm-up delay multiplier per attempt
+ * @param {number} [opts.maxIntervalMs] - cap on the warm-up delay
+ * @param {number} [opts.warmupBudgetMs] - total warm-up waiting before switching to background checks
+ * @param {number} [opts.backgroundIntervalMs] - delay between background checks
+ * @param {number} [opts.backgroundMaxTries] - background checks before giving up with "error"
  * @param {(status: "ready"|"warming"|"error", detail: string) => void} [opts.onUpdate] - called after each attempt
  * @param {() => boolean} [opts.isCancelled] - checked before each attempt; polling stops silently once true
  * @param {(ms: number) => Promise<void>} [opts.sleep]
@@ -52,31 +62,59 @@ export async function fetchSearchStatus({ fetchImpl = fetch, url = "/api/search/
 export async function pollSearchStatus({
   fetchImpl = fetch,
   url = "/api/search/status",
-  maxTries = 8,
-  intervalMs = 3000,
+  initialIntervalMs = 3000,
+  backoffFactor = 1.5,
+  maxIntervalMs = 15000,
+  warmupBudgetMs = 180000,
+  backgroundIntervalMs = 60000,
+  backgroundMaxTries = 60,
   onUpdate,
   isCancelled = () => false,
   sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 } = {}) {
-  for (let attempt = 0; attempt < maxTries; attempt++) {
+  // Phase 1: warm-up with backoff.
+  let waited = 0;
+  let delay = initialIntervalMs;
+  let last;
+  for (;;) {
     if (isCancelled()) return null;
-
-    const { status, detail } = await fetchSearchStatus({ fetchImpl, url });
+    last = await fetchSearchStatus({ fetchImpl, url });
     if (isCancelled()) return null;
-
-    const gaveUp = status === "warming" && attempt + 1 >= maxTries;
-    const result = gaveUp
-      ? {
-          status: "error",
-          detail: detail
-            ? `${detail} Gave up waiting for it to finish waking up.`
-            : "Gave up waiting for the search service to finish waking up.",
-        }
-      : { status, detail };
-
-    onUpdate?.(result.status, result.detail);
-    if (result.status !== "warming") return result;
-
-    await sleep(intervalMs);
+    if (last.status !== "warming") {
+      onUpdate?.(last.status, last.detail);
+      return last;
+    }
+    if (waited >= warmupBudgetMs) break;
+    onUpdate?.(last.status, last.detail);
+    await sleep(delay);
+    waited += delay;
+    delay = Math.min(delay * backoffFactor, maxIntervalMs);
   }
+
+  // Phase 2: slow background checks.
+  const backgroundDetail = (detail) =>
+    detail
+      ? `${detail} Still waking up — checking again in the background.`
+      : "Still waking up — checking again in the background.";
+  onUpdate?.("warming", backgroundDetail(last.detail));
+  for (let attempt = 0; attempt < backgroundMaxTries; attempt++) {
+    await sleep(backgroundIntervalMs);
+    if (isCancelled()) return null;
+    last = await fetchSearchStatus({ fetchImpl, url });
+    if (isCancelled()) return null;
+    if (last.status !== "warming") {
+      onUpdate?.(last.status, last.detail);
+      return last;
+    }
+    if (attempt + 1 < backgroundMaxTries) onUpdate?.("warming", backgroundDetail(last.detail));
+  }
+
+  const gaveUp = {
+    status: "error",
+    detail: last.detail
+      ? `${last.detail} Gave up waiting for it to finish waking up.`
+      : "Gave up waiting for the search service to finish waking up.",
+  };
+  onUpdate?.(gaveUp.status, gaveUp.detail);
+  return gaveUp;
 }

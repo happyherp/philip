@@ -61,33 +61,107 @@ describe("pollSearchStatus", () => {
 
   it("stops immediately and reports a hard error without retrying", async () => {
     const fetchImpl = vi.fn(async () => jsonResponse({ status: "error", detail: "boom" }));
-    const out = await pollSearchStatus({ fetchImpl, sleep: noSleep, maxTries: 8 });
+    const out = await pollSearchStatus({ fetchImpl, sleep: noSleep });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(out).toEqual({ status: "error", detail: "boom" });
   });
 
-  it("keeps polling while warming, then flips to error once tries are exhausted", async () => {
-    // A HuggingFace Space stuck in a crashed/RUNTIME_ERROR state (not merely
-    // asleep) returns 503 forever — probeSearch reports that as "warming"
-    // indefinitely (regression: https://github.com/happyherp/philip, luther-mcp
-    // wakeup issue). The client must eventually give up rather than tell the
-    // reader the service is "warming up..." forever with no further action.
-    const fetchImpl = vi.fn(async () => jsonResponse({ status: "warming", detail: "Service is waking up (HTTP 503)." }));
+  it("backs off between warm-up attempts, growing the interval up to a cap", async () => {
+    let call = 0;
+    const fetchImpl = vi.fn(async () => {
+      call += 1;
+      return call < 6
+        ? jsonResponse({ status: "warming", detail: "waking" })
+        : jsonResponse({ status: "ready", detail: "up now" });
+    });
+    const sleep = vi.fn(async () => {});
+    const out = await pollSearchStatus({
+      fetchImpl,
+      sleep,
+      initialIntervalMs: 3000,
+      backoffFactor: 2,
+      maxIntervalMs: 20000,
+    });
+    expect(out).toEqual({ status: "ready", detail: "up now" });
+    expect(sleep.mock.calls.map((c) => c[0])).toEqual([3000, 6000, 12000, 20000, 20000]);
+  });
+
+  it("keeps warming up for the whole budget (a cold HF Space takes ~2 min), not ~30 s", async () => {
+    // Regression: the old 8 x 3 s loop gave up long before a sleeping
+    // HuggingFace Space finished its ~2 minute cold start, so the reader who
+    // woke it never got search. With the defaults, a Space that becomes ready
+    // after 150 s of (simulated) waiting must still be picked up in the
+    // warm-up phase.
+    let waited = 0;
+    const sleep = vi.fn(async (ms) => {
+      waited += ms;
+    });
+    const fetchImpl = vi.fn(async () =>
+      waited >= 150_000
+        ? jsonResponse({ status: "ready", detail: "up now" })
+        : jsonResponse({ status: "warming", detail: "waking" }),
+    );
+    const updates = [];
+    const out = await pollSearchStatus({
+      fetchImpl,
+      sleep,
+      onUpdate: (status) => updates.push(status),
+    });
+    expect(out).toEqual({ status: "ready", detail: "up now" });
+    expect(updates.every((s) => s === "warming" || s === "ready")).toBe(true);
+    // Every sleep so far was a warm-up sleep (background checks are 60 s apart
+    // and only start once the 180 s warm-up budget is spent).
+    expect(waited).toBeLessThan(180_000);
+  });
+
+  it("after the warm-up budget, keeps checking in the background and flips to ready later", async () => {
+    let waited = 0;
+    const sleep = vi.fn(async (ms) => {
+      waited += ms;
+    });
+    const fetchImpl = vi.fn(async () =>
+      waited >= 400_000
+        ? jsonResponse({ status: "ready", detail: "finally up" })
+        : jsonResponse({ status: "warming", detail: "Service is waking up (HTTP 503)." }),
+    );
+    const updates = [];
+    const out = await pollSearchStatus({
+      fetchImpl,
+      sleep,
+      warmupBudgetMs: 30_000,
+      backgroundIntervalMs: 60_000,
+      onUpdate: (status, detail) => updates.push({ status, detail }),
+    });
+    expect(out).toEqual({ status: "ready", detail: "finally up" });
+    // Never shown as a hard error while background checks are still running.
+    expect(updates.some((u) => u.status === "error")).toBe(false);
+    expect(updates.some((u) => /background/i.test(u.detail))).toBe(true);
+    // Background sleeps use the slow interval.
+    expect(sleep).toHaveBeenCalledWith(60_000);
+  });
+
+  it("gives up with an error once the background checks are also exhausted", async () => {
+    // A Space stuck crashed (not merely asleep) returns 503 forever, reported
+    // as "warming". The indicator must not claim "warming up" indefinitely.
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ status: "warming", detail: "Service is waking up (HTTP 503)." }),
+    );
     const updates = [];
     const out = await pollSearchStatus({
       fetchImpl,
       sleep: noSleep,
-      maxTries: 3,
+      warmupBudgetMs: 10_000,
+      initialIntervalMs: 5000,
+      backgroundIntervalMs: 60_000,
+      backgroundMaxTries: 3,
       onUpdate: (status, detail) => updates.push({ status, detail }),
     });
-    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    // 2 warm-up probes (5 s + 5 s = budget) + 1 at budget + 3 background probes.
+    expect(fetchImpl).toHaveBeenCalledTimes(6);
     expect(out.status).toBe("error");
     expect(out.detail).toMatch(/gave up/i);
-    expect(updates).toHaveLength(3);
-    expect(updates[0].status).toBe("warming");
-    expect(updates[1].status).toBe("warming");
-    expect(updates[2].status).toBe("error");
-    expect(updates[2].detail).toMatch(/gave up/i);
+    expect(updates.at(-1).status).toBe("error");
+    expect(updates.slice(0, -1).every((u) => u.status === "warming")).toBe(true);
   });
 
   it("stops polling early once the status leaves warming", async () => {
@@ -98,12 +172,12 @@ describe("pollSearchStatus", () => {
         ? jsonResponse({ status: "warming", detail: "waking" })
         : jsonResponse({ status: "ready", detail: "up now" });
     });
-    const out = await pollSearchStatus({ fetchImpl, sleep: noSleep, maxTries: 8 });
+    const out = await pollSearchStatus({ fetchImpl, sleep: noSleep });
     expect(fetchImpl).toHaveBeenCalledTimes(2);
     expect(out).toEqual({ status: "ready", detail: "up now" });
   });
 
-  it("sleeps between attempts using the given interval", async () => {
+  it("sleeps between attempts using the initial interval", async () => {
     let call = 0;
     const fetchImpl = vi.fn(async () => {
       call += 1;
@@ -112,7 +186,7 @@ describe("pollSearchStatus", () => {
         : jsonResponse({ status: "ready", detail: "up now" });
     });
     const sleep = vi.fn(async () => {});
-    await pollSearchStatus({ fetchImpl, sleep, maxTries: 8, intervalMs: 3000 });
+    await pollSearchStatus({ fetchImpl, sleep, initialIntervalMs: 3000 });
     expect(sleep).toHaveBeenCalledTimes(1);
     expect(sleep).toHaveBeenCalledWith(3000);
   });
@@ -127,7 +201,6 @@ describe("pollSearchStatus", () => {
     const out = await pollSearchStatus({
       fetchImpl,
       sleep: noSleep,
-      maxTries: 8,
       isCancelled: () => {
         if (call >= 2) cancelled = true;
         return cancelled;
